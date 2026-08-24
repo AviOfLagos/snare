@@ -1,34 +1,74 @@
 #!/usr/bin/env bash
-# install.sh — put snare on your PATH. Installs nothing else, ships no credentials.
-set -euo pipefail
+# install.sh — put snare on your PATH. Ships no credentials, installs nothing else.
+set -uo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+case "$(uname -s 2>/dev/null)" in
+  Darwin) OS=macos ;;
+  Linux)  grep -qi microsoft /proc/version 2>/dev/null && OS=wsl || OS=linux ;;
+  MINGW*|MSYS*|CYGWIN*) OS=windows ;;
+  *) OS=unknown ;;
+esac
+
 BIN="${SNARE_BIN:-$HOME/.local/bin}"
-
 echo "snare installer"
-echo "  source: $SRC"
+echo "  platform: $OS"
+echo "  source:   $SRC"
+echo
 
+# ---- required ------------------------------------------------------------
 miss=0
 for c in bash git python3; do
-  command -v "$c" >/dev/null || { echo "  MISSING: $c"; miss=1; }
+  if command -v "$c" >/dev/null 2>&1; then printf '  ok       %s\n' "$c"
+  else printf '  MISSING  %s\n' "$c"; miss=1; fi
 done
-command -v gh >/dev/null || { echo "  MISSING: gh (GitHub CLI) — brew install gh"; miss=1; }
-command -v git-filter-repo >/dev/null || echo "  optional: git-filter-repo not found (needed only for --purge-history)"
-[ "$miss" = 1 ] && { echo "install the missing tools first"; exit 1; }
+if command -v gh >/dev/null 2>&1; then printf '  ok       gh\n'
+else
+  printf '  MISSING  gh (GitHub CLI)\n'; miss=1
+fi
+
+# ---- optional ------------------------------------------------------------
+command -v git-filter-repo >/dev/null 2>&1 \
+  && printf '  ok       git-filter-repo\n' \
+  || printf '  optional git-filter-repo  (only for: snare fix --purge-history)\n'
+case "$OS" in
+  linux|wsl)
+    command -v systemctl   >/dev/null 2>&1 || printf '  optional systemd  (else run the guard yourself)\n'
+    command -v notify-send >/dev/null 2>&1 || printf '  optional libnotify (desktop alerts)\n'
+    command -v xdg-open    >/dev/null 2>&1 || printf '  optional xdg-utils (opening mail drafts)\n' ;;
+esac
+
+if [ "$miss" = 1 ]; then
+  echo
+  echo "Install what is missing, then re-run:"
+  case "$OS" in
+    macos)   echo "  brew install git gh python3" ;;
+    linux|wsl)
+      echo "  Debian/Ubuntu:  sudo apt install -y git python3 curl"
+      echo "                  (gh: https://github.com/cli/cli/blob/trunk/docs/install_linux.md)"
+      echo "  Fedora:         sudo dnf install -y git python3 gh"
+      echo "  Arch:           sudo pacman -S git python github-cli" ;;
+    windows) echo "  winget install Git.Git GitHub.cli Python.Python.3.12"
+             echo "  then run this from Git Bash (not cmd/PowerShell)" ;;
+  esac
+  exit 1
+fi
 
 mkdir -p "$BIN"
-ln -sf "$SRC/bin/snare" "$BIN/snare"
-chmod +x "$SRC/bin/snare"
-echo "  linked: $BIN/snare -> $SRC/bin/snare"
+ln -sf "$SRC/bin/snare" "$BIN/snare" 2>/dev/null || cp "$SRC/bin/snare" "$BIN/snare"
+chmod +x "$SRC/bin/snare" "$BIN/snare" 2>/dev/null
+echo
+echo "  linked: $BIN/snare"
 
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo
-     echo "  $BIN is not on your PATH. Add this to ~/.zshrc:"
+     echo "  $BIN is not on your PATH — add to your shell profile:"
      echo "      export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
 
-cat <<'NEXT'
+cat <<NEXT
 
 Done. Next:
 
@@ -37,5 +77,14 @@ Done. Next:
   snare scan github      scan every repo you can reach
   snare guard install    kill the loader on sight, from login onwards
 
-snare never ships or stores a token. It uses your gh credentials.
+snare never ships or stores a token — it uses your gh credentials.
 NEXT
+
+case "$OS" in
+  windows) echo
+           echo "Windows note: run snare from Git Bash or WSL."
+           echo "'snare guard install' registers a logon Scheduled Task." ;;
+  wsl)     echo
+           echo "WSL note: the guard only sees processes inside WSL," 
+           echo "not those running on Windows itself." ;;
+esac

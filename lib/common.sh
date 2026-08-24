@@ -48,3 +48,64 @@ require_gh(){
 }
 
 gh_user(){ gh api user --jq .login 2>/dev/null; }
+
+# ---------------------------------------------------------------- platform
+snare_os(){
+  case "$(uname -s 2>/dev/null)" in
+    Darwin) echo macos ;;
+    Linux)  grep -qi microsoft /proc/version 2>/dev/null && echo wsl || echo linux ;;
+    MINGW*|MSYS*|CYGWIN*) echo windows ;;
+    *) echo unknown ;;
+  esac
+}
+SNARE_OS="$(snare_os)"
+
+# Process list as: PID PPID COMMAND  (BSD and procps differ)
+snare_ps(){
+  case "$SNARE_OS" in
+    macos) ps -axww -o pid=,ppid=,command= 2>/dev/null ;;
+    windows) ps -W -s 2>/dev/null | awk 'NR>1{pid=$1;ppid=$2;$1=$2=$3=$4="";sub(/^ +/,"");print pid,ppid,$0}' ;;
+    *) ps -eo pid=,ppid=,args= --width 4096 2>/dev/null || ps -eo pid=,ppid=,args= 2>/dev/null ;;
+  esac
+}
+
+# One process's full command line
+snare_ps_cmd(){ # $1=pid
+  case "$SNARE_OS" in
+    macos) ps -ww -o command= -p "$1" 2>/dev/null ;;
+    *)     ps -o args= -p "$1" 2>/dev/null ;;
+  esac
+}
+
+# Network connections, one per line, containing remote addresses
+snare_netlist(){
+  if command -v lsof >/dev/null 2>&1; then lsof -nP -i 2>/dev/null
+  elif command -v ss  >/dev/null 2>&1; then ss -tunp 2>/dev/null
+  elif command -v netstat >/dev/null 2>&1; then netstat -anp 2>/dev/null
+  fi
+}
+# PID owning a connection line (differs per tool)
+snare_net_pid(){ # reads a line on stdin
+  if command -v lsof >/dev/null 2>&1; then awk '{print $2}'
+  else grep -oE 'pid=[0-9]+' | head -1 | cut -d= -f2
+  fi
+}
+
+snare_open(){ # open a URL/file in the desktop default handler
+  case "$SNARE_OS" in
+    macos)   open "$1" ;;
+    windows) start "" "$1" 2>/dev/null || cmd.exe /c start "" "$1" ;;
+    wsl)     command -v wslview >/dev/null && wslview "$1" || cmd.exe /c start "" "$1" ;;
+    *)       command -v xdg-open >/dev/null && xdg-open "$1" >/dev/null 2>&1 || \
+             { echo; ylw "  no xdg-open — paste this into your browser/mail client:"; echo "$1"; } ;;
+  esac
+}
+
+snare_desktop_notify(){ # $1=message
+  case "$SNARE_OS" in
+    macos) osascript -e "display notification \"$1\" with title \"snare\" sound name \"Basso\"" >/dev/null 2>&1 ;;
+    linux|wsl) command -v notify-send >/dev/null && notify-send -u critical "snare" "$1" >/dev/null 2>&1 ;;
+    windows) powershell.exe -NoProfile -Command "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.MessageBox]::Show('$1','snare')" >/dev/null 2>&1 ;;
+  esac
+  return 0
+}

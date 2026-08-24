@@ -42,8 +42,10 @@ everything copied. Because the C2 lives on-chain the attacker rotates it freely 
 ### Check your machine
 
 \`\`\`bash
-# running right now?
-ps axww | grep -E "node .*-e .*global\[|osascript.*Pasteboard" | grep -v grep
+# running right now?  (macOS/Linux)
+ps -eo pid,args 2>/dev/null | grep -E "node .*-e .*global\[" | grep -v grep
+# Windows PowerShell:
+#   Get-CimInstance Win32_Process | ? { $_.CommandLine -match 'node .*-e .*global\[' }
 
 # your local clones
 grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .
@@ -118,8 +120,8 @@ cmd_notify(){
     local sent=0
     while IFS=$'\t' read -r who email name; do
       [ -z "$email" ] && continue
-      python3 - "$email" "$name" "$repo" <<'PY'
-import urllib.parse, subprocess, sys
+      local _url; _url="$(python3 - "$email" "$name" "$repo" <<'PY'
+import urllib.parse, sys
 email, name, repo = sys.argv[1], sys.argv[2] or "there", sys.argv[3]
 subject = f"Security: malware in {repo} - please check your machine"
 body = f"""Hi {name.split()[0] if name.strip() else 'there'} - real security notice, not spam. You can verify all of
@@ -141,7 +143,7 @@ blocking a single IP does not stop it. The second stage was a clipboard
 stealer that captured everything copied.
 
 PLEASE CHECK:
-  ps axww | grep -E "node .*-e .*global\\[|osascript.*Pasteboard" | grep -v grep
+  ps -eo pid,args 2>/dev/null || ps axww    # then look for: node -e ...global[
   grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .
   head -c 4 public/fonts/*.woff2
 
@@ -155,9 +157,10 @@ Happy to walk you through it.
 url = ("mailto:" + urllib.parse.quote(email) +
        "?subject=" + urllib.parse.quote(subject) +
        "&body=" + urllib.parse.quote(body))
-subprocess.run(["open", url])
-print(f"  draft -> {email}")
+print(url)
 PY
+)"
+      [ -n "$_url" ] && { snare_open "$_url"; echo "  draft -> $email"; }
       sent=$((sent+1)); sleep 1
     done < "$contacts"
     [ "$sent" = 0 ] && ylw "  no reachable email addresses — use --issue instead"

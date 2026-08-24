@@ -29,12 +29,37 @@ out of them. The operator rotates the IP by sending one transaction.
 ## Install
 
 ```bash
-git clone <this-repo> ~/snare && cd ~/snare && ./install.sh
+git clone https://github.com/AviOfLagos/snare ~/snare && cd ~/snare && ./install.sh
 gh auth login          # your own account — snare ships no token
 snare doctor
 ```
 
-Requires `bash`, `git`, `python3`, `gh`. `git-filter-repo` only for `--purge-history`.
+### Requirements
+
+**Required everywhere:** `bash`, `git`, `python3`, `gh` ([GitHub CLI](https://cli.github.com)).
+**Optional:** `git-filter-repo` — only for `snare fix --purge-history`.
+
+| Platform | Install the requirements | Guard runs via |
+|---|---|---|
+| **macOS** | `brew install git gh python3` <br> `brew install git-filter-repo` | `launchd` user agent |
+| **Linux** | Debian/Ubuntu: `sudo apt install -y git python3` + [gh repo](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) <br> Fedora: `sudo dnf install -y git python3 gh` <br> Arch: `sudo pacman -S git python github-cli` | `systemd --user` unit |
+| **Windows** | `winget install Git.Git GitHub.cli Python.Python.3.12` <br> then run snare from **Git Bash** | logon **Scheduled Task** |
+| **WSL** | as Linux | `systemd --user` (if enabled) |
+
+### Platform notes, honestly
+
+- **macOS and Linux are first-class.** Everything works, including the
+  background guard.
+- **Windows needs Git Bash or WSL.** snare is bash; it does not run in `cmd`
+  or bare PowerShell. Under Git Bash, `scan` / `fix` / `notify` work fully and
+  `snare guard install` registers a logon Scheduled Task.
+- **Under WSL the guard only sees processes inside WSL**, not Windows itself.
+  If you develop on Windows proper, run snare from Git Bash.
+- **Linux without systemd:** run the guard yourself —
+  `nohup snare guard run --interval 1 >/dev/null 2>&1 &`
+- Desktop alerts use `osascript` (macOS), `notify-send` (Linux, needs
+  `libnotify`), or a message box (Windows). Missing them costs you the popup,
+  nothing else — detections still land in the log.
 
 ## Use
 
