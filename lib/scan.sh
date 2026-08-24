@@ -19,7 +19,7 @@ cmd_scan_repo(){
     local SELF=0 EXCL=()
     if [ -f .snare-tool ]; then
       SELF=1
-      EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
+      EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude-dir=docs --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
       dim "  (snare's own source tree — its detection patterns are excluded)"
     fi
 
@@ -86,7 +86,7 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     local lng
     lng="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
         -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
-        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/' || cat; } \
+        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/' || cat; } \
         | xargs awk 'length > 1500 {print FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -10)"
     if [ -n "$lng" ]; then while IFS= read -r l; do _hit "$l — payload may be hidden past a run of whitespace"; done <<< "$lng"
     else grn "  no suspiciously long lines"; fi

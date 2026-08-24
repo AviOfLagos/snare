@@ -4,7 +4,15 @@
 set -uo pipefail
 
 SNARE_VERSION="1.0.0"
-_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve through symlinks: install.sh links this into ~/.local/bin, so
+# BASH_SOURCE is the link, not the real file. (readlink -f is not portable.)
+_src="${BASH_SOURCE[0]}"
+while [ -L "$_src" ]; do
+  _ldir="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  case "$_src" in /*) ;; *) _src="$_ldir/$_src" ;; esac
+done
+_dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
 # shellcheck source=/dev/null
 . "$_dir/lib/common.sh"
 . "$_dir/lib/guard.sh"
