@@ -14,8 +14,17 @@ cmd_scan_repo(){
   ( cd "$repo" || exit 1
     echo "Scanning: $(pwd)"
 
+    # snare's own source legitimately contains every IOC string. Skip its
+    # files rather than reporting the detector as the thing detected.
+    local SELF=0 EXCL=()
+    if [ -f .snare-tool ]; then
+      SELF=1
+      EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
+      dim "  (snare's own source tree — its detection patterns are excluded)"
+    fi
+
     hdr "1. Working tree"
-    out="$(grep -rInE "$pattern" . --exclude-dir=.git 2>/dev/null | head -40)"
+    out="$(grep -rInE "$pattern" . --exclude-dir=.git "${EXCL[@]}" 2>/dev/null | head -40)"
     if [ -n "$out" ]; then while IFS= read -r l; do _hit "$(echo "$l" | cut -c1-160)"; done <<< "$out"
     else grn "  clean"; fi
 
@@ -77,11 +86,15 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     local lng
     lng="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
         -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
+        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/' || cat; } \
         | xargs awk 'length > 1500 {print FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -10)"
     if [ -n "$lng" ]; then while IFS= read -r l; do _hit "$l — payload may be hidden past a run of whitespace"; done <<< "$lng"
     else grn "  no suspiciously long lines"; fi
 
-    if git rev-parse --git-dir >/dev/null 2>&1; then
+    if [ "$SELF" = 1 ]; then
+      hdr "5. Git history"
+      dim "  skipped (snare's own repo)"
+    elif git rev-parse --git-dir >/dev/null 2>&1; then
       hdr "5. Git history (all branches, all commits)"
       while IFS= read -r pat; do
         [ -z "$pat" ] && continue
