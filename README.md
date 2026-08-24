@@ -1,5 +1,7 @@
 # snare
 
+**[Read the write-up →](https://aviooflagos.github.io/snare/)** — how the malware works, how to find it by hand, install instructions per platform.
+
 Find, kill and clean up supply-chain malware that hides in your repositories.
 
 Built while cleaning up a live infection: a dropper committed into four
