@@ -1,0 +1,55 @@
+# IOC patterns (POSIX extended regex, one per line, '#' = comment)
+# Campaign observed 2026-08-24: npm-delivered node -e loader + JXA clipboard stealer
+#
+# --- Hard network / campaign indicators (near-zero false positive) ---
+23\.27\.13\.135
+/0x/clb
+/verify-human/
+q4FZkxX
+A8-3379-6
+Sec-V
+#
+# --- Loader globals (the stage-1 bootstrap sets these) ---
+global\['_t_s'\]
+global\['_t_u'\]
+global\['_V'\]
+_t_s
+_t_u
+#
+# --- Generic inline-node execution with obfuscated globals ---
+node[[:space:]]+.*-e[[:space:]]+.*global\[
+node[[:space:]]+.*--eval[[:space:]]+.*global\[
+#
+# --- JXA clipboard stealer ---
+osascript.*generalPasteboard
+osascript.*NSPasteboard
+changeCount
+#
+# --- Shai-Hulud / known npm worm artifacts ---
+shai-hulud
+Shai-Hulud
+setup_bun\.js
+bun_environment\.js
+truffleSecrets
+webhook\.site
+s1ngularity
+#
+# --- EtherHiding: C2 address resolved from the Ethereum blockchain ---
+# (added after analysing Bitsaac/nexprove-web postcss.config.js, campaign A8-3379-6)
+0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a
+0xa322e5f3d311d3080e6f0121063e9adc2490ef1a
+eth\.blockscout\.com
+1rpc\.io/eth
+eth\.drpc\.org
+ethereum-rpc\.publicnode\.com
+eth-mainnet\.public\.blastapi\.io
+/0x/cls
+/0x/ls
+global\.i[[:space:]]*=
+_H2
+#
+# --- Fake-asset execution: payload disguised as a font/image, run by a
+#     hidden VS Code folderOpen task (seen in 3 repos, campaign A8-*) ---
+node[[:space:]]+\./public/fonts/.*\.woff2
+\.woff2['\"]?\)?[[:space:]]*\|\|
+"label":[[:space:]]*"eslint-check"

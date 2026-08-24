@@ -1,0 +1,7 @@
+# snare state never belongs in the repo
+.snare/
+logs/
+work/
+backups/
+*.bundle
+.DS_Store

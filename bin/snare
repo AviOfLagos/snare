@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# snare — find, kill and clean up supply-chain malware in your repos.
+# https://github.com/  •  MIT
+set -uo pipefail
+
+SNARE_VERSION="1.0.0"
+_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=/dev/null
+. "$_dir/lib/common.sh"
+. "$_dir/lib/guard.sh"
+. "$_dir/lib/scan.sh"
+. "$_dir/lib/fix.sh"
+. "$_dir/lib/notify.sh"
+
+usage(){ cat <<USAGE
+${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
+
+${C_BLD}TRACK${C_OFF}
+  snare guard status            is the monitor running?
+  snare guard install           run it at login (kills the loader within ~1s)
+  snare guard scan              one-shot check of this machine
+  snare guard log               follow the log
+  snare guard uninstall
+
+${C_BLD}FIND${C_OFF}
+  snare scan repo [path]        deep-scan one clone: tree, all branches, history
+  snare scan github             every repo you can reach, via API (no cloning)
+  snare scan github --mine      only repos you own
+  snare scan github --all-branches
+  snare doctor                  check this machine + your GitHub account
+
+${C_BLD}FIX${C_OFF}
+  snare fix <owner/repo>                      dry run (always backs up first)
+  snare fix <owner/repo> --push               clean branch tips and push
+  snare fix <owner/repo> --purge-history --push   erase from all history
+
+${C_BLD}INFORM${C_OFF}
+  snare notify <owner/repo>            list collaborators + preview
+  snare notify <owner/repo> --issue    file a GitHub issue @-mentioning them
+  snare notify <owner/repo> --mail     open a pre-filled mail draft per person
+
+${C_BLD}AUTH${C_OFF}
+  snare uses ${C_BLD}your own${C_OFF} GitHub credentials. No token ships with this tool.
+      gh auth login              browser, or paste a token
+      export GH_TOKEN=...        scopes needed: repo, workflow
+
+State lives in \$SNARE_HOME (default ~/.snare): logs, evidence, backups.
+USAGE
+}
+
+cmd_doctor(){
+  hdr "This machine"
+  if guard_scan_once >/dev/null 2>&1; then grn "  no malicious process running"
+  else red "  DETECTIONS — see $SNARE_LOGS/guard.log"; fi
+  launchctl list 2>/dev/null | grep -q com.snare.guard \
+    && grn "  guard is running" || ylw "  guard not installed (snare guard install)"
+
+  hdr "Persistence spots"
+  local n
+  for d in "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons; do
+    n="$(ls -1 "$d" 2>/dev/null | grep -v '^com.snare' | wc -l | tr -d ' ')"
+    [ "${n:-0}" -gt 0 ] && ylw "  $d: $n entry(ies) — review" || grn "  $d: empty"
+  done
+  crontab -l >/dev/null 2>&1 && ylw "  crontab: present — review" || grn "  crontab: none"
+
+  hdr "GitHub"
+  if gh auth status >/dev/null 2>&1; then
+    grn "  authenticated as $(gh_user)"
+    echo "  token scopes: $(gh api -i user 2>/dev/null | awk -F': ' '/^[Xx]-[Oo]auth-[Ss]copes:/{print $2}' | tr -d '\r')"
+    echo "  repos reachable: $(gh api --paginate 'user/repos?affiliation=owner,collaborator,organization_member&per_page=100' --jq '.[].full_name' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+  else ylw "  not authenticated — run: gh auth login"; fi
+  echo; dim "  next: snare scan github"
+}
+
+main(){
+  local c="${1:-help}"; shift || true
+  case "$c" in
+    guard)  cmd_guard "$@" ;;
+    scan)
+      local what="${1:-}"; shift || true
+      case "$what" in
+        repo)   cmd_scan_repo "${1:-$PWD}" ;;
+        github) cmd_scan_github "$@" ;;
+        "")     cmd_scan_repo "$PWD" ;;
+        *)      cmd_scan_repo "$what" ;;
+      esac ;;
+    fix)    cmd_fix "$@" ;;
+    notify) cmd_notify "$@" ;;
+    doctor) cmd_doctor ;;
+    version|--version|-v) echo "snare $SNARE_VERSION" ;;
+    help|--help|-h) usage ;;
+    *) red "unknown command: $c"; echo; usage; exit 2 ;;
+  esac
+}
+main "$@"
