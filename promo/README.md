@@ -24,11 +24,24 @@ There is no API key configured, so this one is copy-paste:
 `canonical_url` points at the field guide, so the site keeps the SEO value rather than
 competing with the dev.to copy for it.
 
-## After posting
+## After posting — one command
 
-Add the live URLs to the site's Reports section so readers can find the discussion:
+The site shows two greyed-out placeholder cards until the links exist. Swap them in:
 
+```bash
+cd docs
+./set-links.sh --tweet https://x.com/YOU/status/123 --devto https://dev.to/YOU/slug
+cd .. && git commit -am "site: add discussion links" && git push
 ```
-docs/_source.html  →  <div class="reports">
-cd docs && ./build.sh && git commit && git push
+
+Either flag on its own works, so you can add them as each post goes live. The script
+rebuilds `index.html` for you; GitHub Pages redeploys about a minute after the push.
+
+Edit by hand instead if you prefer — the placeholders are marked in `docs/_source.html`:
+
+```html
+<!-- LINK:tweet:start -->  …  <!-- LINK:tweet:end -->
+<!-- LINK:devto:start -->  …  <!-- LINK:devto:end -->
 ```
+
+Never edit `docs/index.html` directly — it is generated, and `build.sh` overwrites it.

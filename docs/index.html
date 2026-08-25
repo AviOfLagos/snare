@@ -43,7 +43,7 @@
 <style>
 :root{
   --ground:#FBFAF8; --surface:#FFFFFF; --sunk:#F1EFEA;
-  --ink:#16181D; --muted:#5C6472; --hair:#E2DFD8;
+  --ink:#16181D; --muted:#565E6B; --hair:#E2DFD8;
   --accent:#C2410C; --accent-soft:#FDEBE0;
   --safe:#0F7355; --safe-soft:#E4F2EC;
   --shadow:0 1px 2px rgba(20,22,28,.05),0 8px 24px -12px rgba(20,22,28,.15);
@@ -89,6 +89,12 @@ a{color:var(--accent);text-underline-offset:3px}
 code{font-family:var(--mono);font-size:.88em;word-break:break-word}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
 
+.skip{
+  position:absolute;left:-9999px;top:0;z-index:100;
+  background:var(--accent);color:var(--ground);
+  padding:10px 16px;border-radius:0 0 8px 0;font-size:.9rem;font-weight:600;text-decoration:none;
+}
+.skip:focus{left:0}
 /* ---------- nav ---------- */
 .nav{
   position:sticky;top:0;z-index:50;
@@ -340,7 +346,8 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
 .foot-links{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:.77rem;margin-top:10px}
 </style>
 
-<nav class="nav">
+<a class="skip" href="#top">Skip to content</a>
+<nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="#top"><span class="mark">sn</span>snare</a>
     <div class="nav-links">
@@ -354,8 +361,9 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
   </div>
 </nav>
 
-<div class="wrap hero stack" id="top">
-  <span class="kicker"><span class="dot"></span>ACTIVE TECHNIQUE · SEEN IN PRIVATE AND PUBLIC REPOS</span>
+<main id="top">
+<div class="wrap hero stack">
+  <span class="kicker"><span class="dot" aria-hidden="true"></span>ACTIVE TECHNIQUE · SEEN IN PRIVATE AND PUBLIC REPOS</span>
   <h1>Malware that runs the moment you <em>open the project</em>.</h1>
   <p class="lede">A dropper family is being committed directly into developer repositories —
   buried inside ordinary config files and disguised as font assets. It executes when you start
@@ -430,6 +438,18 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
       <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke-linecap="round"/></svg></span>
       <span><b>Report a variant</b><span>A different wallet, filename or trigger goes straight into the detection patterns.</span></span>
     </a>
+<!-- LINK:tweet:start -->
+    <div class="report-link pending" aria-disabled="true">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.6 1.5h2.3l-5 5.8 5.9 7.8h-4.6l-3.6-4.7-4.1 4.7H1.2l5.4-6.2L1 1.5h4.7l3.3 4.3 3.6-4.3Zm-.8 12.2h1.3L4.6 2.8H3.2l8.6 10.9Z"/></svg></span>
+      <span><b>Discussion on X</b><span>Thread going up shortly — link lands here.</span></span>
+    </div>
+<!-- LINK:tweet:end -->
+<!-- LINK:devto:start -->
+    <div class="report-link pending" aria-disabled="true">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 3h3.1c1.9 0 3.2 1.2 3.2 3v4c0 1.8-1.3 3-3.2 3H2V3Zm2.1 2v6h1c.8 0 1.2-.4 1.2-1.2V6.2C6.3 5.4 5.9 5 5.1 5h-1Zm5.6-2h2l1.1 5.2L14 3h2l-2.2 10h-1.9L9.7 3Z"/></svg></span>
+      <span><b>Write-up on dev.to</b><span>Full technical breakdown — link lands here.</span></span>
+    </div>
+<!-- LINK:devto:end -->
   </div>
 
   <div class="callout">
@@ -455,7 +475,7 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
     <div class="panel-bar">
       <span class="label">postcss.config.js — as committed</span>
       <div class="bar-actions">
-        <button class="btn" id="reveal" aria-pressed="false">reveal whitespace</button>
+        <button class="btn" id="reveal" type="button" aria-pressed="false" aria-controls="code">reveal whitespace</button>
       </div>
     </div>
     <div class="scroller" id="scroller"><pre id="code"></pre></div>
@@ -661,13 +681,13 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
   <code>git</code>, <code>python3</code> and the GitHub CLI.</p>
   <div>
     <div class="tabs" role="tablist" aria-label="Platform">
-      <button class="tab" role="tab" aria-selected="true"  data-p="mac">macOS</button>
-      <button class="tab" role="tab" aria-selected="false" data-p="linux">Linux</button>
-      <button class="tab" role="tab" aria-selected="false" data-p="win">Windows</button>
-      <button class="tab" role="tab" aria-selected="false" data-p="wsl">WSL</button>
+      <button class="tab" role="tab" aria-selected="true"  data-p="mac" id="tab-mac" aria-controls="p-mac">macOS</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="linux" id="tab-linux" aria-controls="p-linux">Linux</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="win" id="tab-win" aria-controls="p-win">Windows</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="wsl" id="tab-wsl" aria-controls="p-wsl">WSL</button>
     </div>
 
-    <div class="pane" id="p-mac">
+    <div class="pane" id="p-mac" role="tabpanel" aria-labelledby="tab-mac" tabindex="0">
       <div class="panel"><div class="panel-bar"><span class="label">macOS · Homebrew</span><div class="bar-actions"></div></div>
         <div class="scroller"><pre>brew install git gh python3 git-filter-repo
 
@@ -679,7 +699,7 @@ snare doctor</pre></div></div>
       started automatically at login.</p>
     </div>
 
-    <div class="pane" id="p-linux" hidden>
+    <div class="pane" id="p-linux" role="tabpanel" aria-labelledby="tab-linux" tabindex="0" hidden>
       <div class="panel"><div class="panel-bar"><span class="label">Linux</span><div class="bar-actions"></div></div>
         <div class="scroller"><pre># Debian / Ubuntu
 sudo apt install -y git python3
@@ -696,7 +716,7 @@ snare doctor</pre></div></div>
       No systemd? Run <code>snare guard run --interval 1</code> yourself under your own supervisor.</p>
     </div>
 
-    <div class="pane" id="p-win" hidden>
+    <div class="pane" id="p-win" role="tabpanel" aria-labelledby="tab-win" tabindex="0" hidden>
       <div class="panel"><div class="panel-bar"><span class="label">Windows · Git Bash</span><div class="bar-actions"></div></div>
         <div class="scroller"><pre>winget install Git.Git GitHub.cli Python.Python.3.12
 
@@ -709,7 +729,7 @@ snare doctor</pre></div></div>
       <code>snare guard install</code> registers a logon Scheduled Task.</p>
     </div>
 
-    <div class="pane" id="p-wsl" hidden>
+    <div class="pane" id="p-wsl" role="tabpanel" aria-labelledby="tab-wsl" tabindex="0" hidden>
       <div class="panel"><div class="panel-bar"><span class="label">Windows Subsystem for Linux</span><div class="bar-actions"></div></div>
         <div class="scroller"><pre>sudo apt install -y git python3
 git clone https://github.com/AviOfLagos/snare ~/snare
@@ -762,6 +782,7 @@ snare doctor</pre></div></div>
   </div>
 </footer>
 </div>
+</main>
 
 <script>
 (function(){
@@ -867,14 +888,27 @@ snare doctor</pre></div></div>
   });
 
   /* ---- platform tabs ---- */
-  var tabs = document.querySelectorAll(".tab");
-  tabs.forEach(function(t){
-    t.addEventListener("click", function(){
-      tabs.forEach(function(x){ x.setAttribute("aria-selected","false"); });
-      t.setAttribute("aria-selected","true");
-      ["mac","linux","win","wsl"].forEach(function(p){
-        document.getElementById("p-"+p).hidden = (p !== t.dataset.p);
-      });
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  function selectTab(t){
+    tabs.forEach(function(x){
+      var on = x === t;
+      x.setAttribute("aria-selected", String(on));
+      x.tabIndex = on ? 0 : -1;
+    });
+    ["mac","linux","win","wsl"].forEach(function(p){
+      document.getElementById("p-"+p).hidden = (p !== t.dataset.p);
+    });
+  }
+  tabs.forEach(function(t, i){
+    t.tabIndex = t.getAttribute("aria-selected") === "true" ? 0 : -1;
+    t.addEventListener("click", function(){ selectTab(t); });
+    t.addEventListener("keydown", function(e){
+      var d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 :
+              e.key === "Home" ? -i : e.key === "End" ? tabs.length-1-i : 0;
+      if(!d) return;
+      e.preventDefault();
+      var next = tabs[(i + d + tabs.length) % tabs.length];
+      selectTab(next); next.focus();
     });
   });
 })();
