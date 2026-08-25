@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 SITE="https://avioflagos.github.io/snare/"
 REPO="https://github.com/AviOfLagos/snare"
-DESC="How to detect and remove supply-chain malware hidden in Git repositories — a dropper that runs on git clone or when VS Code opens the folder. Free open-source scanner for macOS, Linux and Windows."
+DESC="A supply-chain attack npm audit cannot see: the dropper is committed into the repository itself, not a dependency. Runs on git clone or when VS Code opens the folder. How it works, how to check your machine, and a free open-source scanner."
 
 {
   echo '<!DOCTYPE html>'
@@ -16,18 +16,18 @@ DESC="How to detect and remove supply-chain malware hidden in Git repositories �
   echo '<meta charset="utf-8">'
   echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
   echo "<meta name=\"description\" content=\"$DESC\">"
-  echo '<meta name="keywords" content="supply chain attack, npm supply chain security, repository malware, malicious postcss.config.js, vscode tasks.json malware, folderOpen exploit, EtherHiding, blockchain C2, fake woff2 payload, clipboard stealer, git history malware, malware scanner, developer security, open source security tool">'
+  echo '<meta name="keywords" content="npm supply chain attack, supply chain malware, supply chain attack detection, npm malware, malicious npm package, compromised repository, repository malware scanner, shai-hulud, malicious postcss.config.js, vscode tasks.json malware, folderOpen exploit, EtherHiding, blockchain C2, fake woff2 payload, clipboard stealer, git history malware, npm audit missed, dependency security, developer security, open source security tool">'
   echo '<meta name="author" content="AviOfLagos">'
   echo '<meta name="robots" content="index,follow">'
   echo "<link rel=\"canonical\" href=\"$SITE\">"
   # Open Graph / Twitter
   echo '<meta property="og:type" content="website">'
   echo '<meta property="og:site_name" content="snare">'
-  echo '<meta property="og:title" content="Malware that runs the moment you open the project">'
+  echo '<meta property="og:title" content="The supply-chain attack npm audit cannot see">'
   echo "<meta property=\"og:description\" content=\"A dropper family committed straight into developer repositories. It executes on the dev server or when your editor opens the folder — no npm install needed. Learn how it works, check your machine, and install snare.\">"
   echo "<meta property=\"og:url\" content=\"$SITE\">"
   echo '<meta name="twitter:card" content="summary_large_image">'
-  echo '<meta name="twitter:title" content="Malware that runs the moment you open the project">'
+  echo '<meta name="twitter:title" content="The supply-chain attack npm audit cannot see">'
   echo '<meta name="twitter:description" content="Detect and remove supply-chain malware hidden in Git repositories. Free, open source, cross-platform.">'
   echo '<meta name="theme-color" content="#C2410C" media="(prefers-color-scheme: light)">'
   echo '<meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">'

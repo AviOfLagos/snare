@@ -1,11 +1,18 @@
 # snare
 
-**Detect and remove supply-chain malware hidden in Git repositories.**
+**A supply-chain attack `npm audit` cannot see — and the scanner that finds it.**
 
-A dropper family is being committed directly into developer repos — buried in ordinary config
-files and disguised as font assets. It runs when you start the dev server, or the instant your
-editor opens the folder. **No `npm install` required.** One sample sat in a repository for five
-months before anyone noticed.
+Everyone knows the npm supply-chain attack: a package you depend on gets compromised, it arrives
+through `npm install`, and it shows up in your lockfile where a scanner has a chance of catching it.
+
+**This variant skips the registry entirely.** The dropper is committed *directly into the
+repository* — hidden in `postcss.config.js` behind thousands of spaces, or in a `.vscode/tasks.json`
+task that fires the moment your editor opens the folder, executing a payload disguised as a
+`.woff2` font. There is no malicious dependency, so `npm audit` is clean, your lockfile is clean,
+and Dependabot has nothing to report.
+
+**No `npm install` required.** One sample sat in a repository for five months before anyone
+noticed.
 
 snare watches your machine for the loader and kills it, scans every repository you can reach,
 removes the payload (including from history), and helps you warn your collaborators.

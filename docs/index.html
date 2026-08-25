@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="How to detect and remove supply-chain malware hidden in Git repositories — a dropper that runs on git clone or when VS Code opens the folder. Free open-source scanner for macOS, Linux and Windows.">
-<meta name="keywords" content="supply chain attack, npm supply chain security, repository malware, malicious postcss.config.js, vscode tasks.json malware, folderOpen exploit, EtherHiding, blockchain C2, fake woff2 payload, clipboard stealer, git history malware, malware scanner, developer security, open source security tool">
+<meta name="description" content="A supply-chain attack npm audit cannot see: the dropper is committed into the repository itself, not a dependency. Runs on git clone or when VS Code opens the folder. How it works, how to check your machine, and a free open-source scanner.">
+<meta name="keywords" content="npm supply chain attack, supply chain malware, supply chain attack detection, npm malware, malicious npm package, compromised repository, repository malware scanner, shai-hulud, malicious postcss.config.js, vscode tasks.json malware, folderOpen exploit, EtherHiding, blockchain C2, fake woff2 payload, clipboard stealer, git history malware, npm audit missed, dependency security, developer security, open source security tool">
 <meta name="author" content="AviOfLagos">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://avioflagos.github.io/snare/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="snare">
-<meta property="og:title" content="Malware that runs the moment you open the project">
+<meta property="og:title" content="The supply-chain attack npm audit cannot see">
 <meta property="og:description" content="A dropper family committed straight into developer repositories. It executes on the dev server or when your editor opens the folder — no npm install needed. Learn how it works, check your machine, and install snare.">
 <meta property="og:url" content="https://avioflagos.github.io/snare/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Malware that runs the moment you open the project">
+<meta name="twitter:title" content="The supply-chain attack npm audit cannot see">
 <meta name="twitter:description" content="Detect and remove supply-chain malware hidden in Git repositories. Free, open source, cross-platform.">
 <meta name="theme-color" content="#C2410C" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">
@@ -33,7 +33,7 @@
   "license":"https://opensource.org/licenses/MIT",
   "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}},
  {"@type":"TechArticle","headline":"Malware that runs the moment you open the project",
-  "description":"How to detect and remove supply-chain malware hidden in Git repositories — a dropper that runs on git clone or when VS Code opens the folder. Free open-source scanner for macOS, Linux and Windows.","url":"https://avioflagos.github.io/snare/",
+  "description":"A supply-chain attack npm audit cannot see: the dropper is committed into the repository itself, not a dependency. Runs on git clone or when VS Code opens the folder. How it works, how to check your machine, and a free open-source scanner.","url":"https://avioflagos.github.io/snare/",
   "author":{"@type":"Person","name":"AviOfLagos"}}
 ]}
 </script>
@@ -363,14 +363,15 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
 
 <main id="top">
 <div class="wrap hero stack">
-  <span class="kicker"><span class="dot" aria-hidden="true"></span>ACTIVE TECHNIQUE · SEEN IN PRIVATE AND PUBLIC REPOS</span>
+  <span class="kicker"><span class="dot" aria-hidden="true"></span>SUPPLY-CHAIN ATTACK · ACTIVE IN PRIVATE AND PUBLIC REPOS</span>
   <h1>Malware that runs the moment you <em>open the project</em>.</h1>
-  <p class="lede">A dropper family is being committed directly into developer repositories —
-  buried inside ordinary config files and disguised as font assets. It executes when you start
-  the dev server, or the instant your editor opens the folder. <strong>No <code>npm install</code>
-  required.</strong> One sample sat in a repository for five months before anyone noticed, and
-  developers have since reported it across student cohorts, agencies and production teams —
-  <a href="#reports">their accounts are here</a>.</p>
+  <p class="lede">This is a supply-chain attack — but not the kind <code>npm audit</code> can see.
+  Instead of poisoning a package you depend on, the dropper is committed <em>directly into the
+  repository</em>, buried in ordinary config files and disguised as font assets. It executes when
+  you start the dev server, or the instant your editor opens the folder. <strong>No
+  <code>npm install</code> required.</strong> One sample sat in a repository for five months before
+  anyone noticed, and developers have since reported it across student cohorts, agencies and
+  production teams — <a href="#reports">their accounts are here</a>.</p>
   <p class="lede"><strong>snare</strong> is a free, open-source command-line tool that watches your
   machine for the loader and kills it, then scans every Git repository you can reach, cleans out
   what it finds, and helps you warn your collaborators.</p>
@@ -413,6 +414,23 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
       <p class="trigger">▸ fires on <code>next dev</code> / <code>next build</code></p>
     </div>
   </div>
+  <div class="callout" id="is-this-npm">
+    <h3>“Is this the npm supply-chain thing?”</h3>
+    <p>Same category, different delivery — and the difference is why people miss it.</p>
+    <p>A classic npm supply-chain attack compromises a package you depend on. It arrives through
+    <code>npm install</code>, it shows up in your lockfile, and <code>npm audit</code> or a
+    dependency scanner has a chance of catching it.</p>
+    <p><strong>This one never touches the registry.</strong> The payload is committed into your own
+    repository, so there is no malicious dependency to find — <code>npm audit</code> is clean,
+    your lockfile is clean, and Dependabot has nothing to report. The malicious code is sitting in
+    a file your build already loads. Interestingly, the loader carries an internal vector tag
+    reading <code>NPM</code>, so the same operator appears to run registry-delivered variants as
+    well.</p>
+    <p>If you arrived here searching for the npm attack: run the
+    <a href="#detect">four checks below</a> anyway. They take a minute and they cover the route a
+    dependency scanner cannot see.</p>
+  </div>
+
   <div class="callout">
     <h3>The font is not a font</h3>
     <p>A genuine <code>.woff2</code> file begins with the magic bytes <code>wOF2</code>. This one
