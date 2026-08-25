@@ -208,6 +208,61 @@ ol.chain span{color:var(--muted);font-size:.94rem;display:block;margin-top:2px}
 .legend{display:flex;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:.73rem;color:var(--muted)}
 .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
 
+/* ---------- figure / diagram ---------- */
+.fig{margin:0;display:flex;flex-direction:column;gap:11px}
+.fig svg{
+  width:100%;max-width:100%;height:auto;display:block;
+  background:var(--surface);border:1px solid var(--hair);border-radius:11px;
+  padding:14px;color:var(--ink);
+}
+.fig figcaption{font-size:.9rem;color:var(--muted);max-width:64ch}
+/* SVG primitives inherit the page palette so both themes work */
+.bx{fill:var(--sunk);stroke:var(--hair);stroke-width:1.25}
+.bx.hot{fill:var(--accent-soft);stroke:var(--accent);stroke-opacity:.55}
+.bx.dash{fill:none;stroke:var(--hair);stroke-dasharray:5 4}
+.zone{fill:none;stroke:var(--hair);stroke-dasharray:4 5;stroke-width:1.25}
+.ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.ln.hot{stroke:var(--accent);stroke-width:1.75}
+.ln.dash{stroke-dasharray:5 4;stroke-opacity:.7}
+.ah{fill:var(--muted)}
+.ah.dim{fill:var(--muted);opacity:.7}
+.ln.hot+text,.t3.hot{fill:var(--accent)}
+.t1{font-family:var(--body);font-size:13px;font-weight:600;fill:var(--ink)}
+.t1.hot{fill:var(--accent)}
+.t2{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.t3{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.t4{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;fill:var(--muted)}
+/* the diagram needs horizontal room; let it scroll rather than shrink to illegible */
+@media(max-width:640px){
+  .fig{overflow-x:auto}
+  .fig svg{min-width:620px}
+}
+
+/* ---------- mechanism two-column ---------- */
+.mech{display:grid;gap:26px;grid-template-columns:1fr;align-items:start}
+@media(min-width:820px){.mech{grid-template-columns:1.15fr .85fr;gap:34px}}
+.mech h3{margin-bottom:6px}
+.mech-steps,.mech-bytes{display:flex;flex-direction:column;gap:10px;min-width:0}
+.bytepad{padding:15px;display:flex;flex-direction:column;gap:12px}
+
+/* ---------- reports ---------- */
+.reports{display:grid;gap:12px;grid-template-columns:1fr}
+@media(min-width:700px){.reports{grid-template-columns:1fr 1fr}}
+.report-link{
+  display:flex;align-items:center;gap:12px;text-decoration:none;
+  background:var(--surface);border:1px solid var(--hair);border-radius:10px;
+  padding:15px 17px;transition:border-color .15s;
+}
+.report-link:hover{border-color:var(--accent)}
+.report-link .ic{
+  width:30px;height:30px;border-radius:8px;flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);
+}
+.report-link .ic svg{width:15px;height:15px}
+.report-link b{display:block;font-size:.94rem;color:var(--ink)}
+.report-link span{display:block;font-size:.83rem;color:var(--muted)}
+.pending{opacity:.55;pointer-events:none}
+
 /* ---------- checks ---------- */
 .check{display:flex;flex-direction:column;gap:9px;padding:20px 0;border-bottom:1px solid var(--hair)}
 .check:last-of-type{border-bottom:none}
@@ -254,6 +309,7 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
     <div class="nav-links">
       <a href="#threat">The threat</a>
       <a href="#mechanism">How it works</a>
+      <a href="#reports">Reports</a>
       <a href="#detect">Check your machine</a>
       <a href="#install">Install</a>
       <a class="nav-cta" href="#install">Install snare</a>
@@ -267,7 +323,9 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
   <p class="lede">A dropper family is being committed directly into developer repositories —
   buried inside ordinary config files and disguised as font assets. It executes when you start
   the dev server, or the instant your editor opens the folder. <strong>No <code>npm install</code>
-  required.</strong> One sample sat in a repository for five months before anyone noticed.</p>
+  required.</strong> One sample sat in a repository for five months before anyone noticed, and
+  developers have since reported it across student cohorts, agencies and production teams —
+  <a href="#reports">their accounts are here</a>.</p>
   <p class="lede"><strong>snare</strong> is a free, open-source command-line tool that watches your
   machine for the loader and kills it, then scans every Git repository you can reach, cleans out
   what it finds, and helps you warn your collaborators.</p>
@@ -318,6 +376,34 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
   </div>
 </section>
 
+<section class="stack" id="reports">
+  <span class="eyebrow">Reports from the field</span>
+  <h2>This is not a one-off</h2>
+  <p class="lede">The accounts below are what developers have described first-hand — an internship
+  cohort of several thousand, engineers nearly dismissed over a compromise that was not their doing,
+  and disrupted operations at several companies. <strong>These are reports, not audited figures.</strong>
+  They are collected in the open precisely so you can read them and judge for yourself.</p>
+
+  <div class="reports">
+    <a class="report-link" href="https://github.com/AviOfLagos/snare/issues/1">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></span>
+      <span><b>Add your account on GitHub</b><span>Open thread — what you saw, what it cost, any variant you found.</span></span>
+    </a>
+    <a class="report-link" href="https://github.com/AviOfLagos/snare/issues/new">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke-linecap="round"/></svg></span>
+      <span><b>Report a variant</b><span>A different wallet, filename or trigger goes straight into the detection patterns.</span></span>
+    </a>
+  </div>
+
+  <div class="callout">
+    <h3>If it reached your team, say so</h3>
+    <p>You do not have to name an employer or client — "a fintech I contract for" is a perfectly
+    good data point. Redact tokens, keys and internal hostnames first. The reason to post is simple:
+    the developers who lost work to this mostly had never heard of the technique, and the ones who
+    caught it early had heard about it from someone else.</p>
+  </div>
+</section>
+
 <section class="stack lead-in">
   <span class="eyebrow">Why nobody spotted it</span>
   <h2>The file looks completely normal</h2>
@@ -345,39 +431,110 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
 
 <section class="stack after-bleed" id="mechanism">
   <span class="eyebrow">How it works</span>
-  <h2>The address it phones home to lives on a blockchain</h2>
-  <p class="lede">This is why blocking an IP address achieves nothing. There is no hardcoded
-  server — the loader derives a fresh one every time it runs, using a documented technique known
-  as <em>EtherHiding</em>. The operator moves their infrastructure by sending a single
-  transaction.</p>
-  <ol class="chain">
-    <li><b>Query public Ethereum RPC endpoints</b><span>It falls through a list — 1rpc.io, drpc.org, publicnode, blastapi — so cutting off any one of them changes nothing.</span></li>
-    <li><b>Read one wallet's outbound transactions</b><span>Through the Blockscout API, newest first.</span></li>
-    <li><b>Take the destination address of the latest one</b><span>Which the operator controls simply by sending a transaction to a new address.</span></li>
-    <li><b>Decode two IPv4 addresses from its bytes</b><span>The first eight bytes of the 20-byte address are read as four octets each.</span></li>
-    <li><b>Fetch stage two and spawn it detached</b><span><code>spawn(…, {detached:true})</code> then <code>unref()</code>. The process reparents away and outlives the editor that started it.</span></li>
-  </ol>
+  <h2>The address it phones home to is not in the code</h2>
+  <p class="lede">This is why blocking an IP achieves nothing. The loader ships with no server
+  address at all — it derives a fresh one every run by reading the public Ethereum blockchain, a
+  documented technique known as <em>EtherHiding</em>. The operator moves their infrastructure by
+  sending a single transaction.</p>
 
-  <div class="panel">
-    <div class="panel-bar"><span class="label">wallet address → two live C2 endpoints</span></div>
-    <div class="scroller"><div style="padding:17px;display:flex;flex-direction:column;gap:13px">
-      <div class="bytes">
-        <span class="byte a">a3</span><span class="byte a">22</span><span class="byte a">e5</span><span class="byte a">f3</span>
-        <span class="byte b">d3</span><span class="byte b">11</span><span class="byte b">d3</span><span class="byte b">08</span>
-        <span class="byte">e6</span><span class="byte">f0</span><span class="byte">12</span><span class="byte">10</span>
-        <span class="byte">63</span><span class="byte">e9</span><span class="byte">aD</span><span class="byte">C2</span>
-        <span class="byte">49</span><span class="byte">0E</span><span class="byte">f1</span><span class="byte">a…</span>
+  <figure class="fig">
+    <svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
+         aria-label="The loader asks the Ethereum blockchain for the attacker's latest transaction, decodes an IP address from it, then fetches stage two from that address. The attacker moves the server by sending a new transaction.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="ah"/>
+        </marker>
+        <marker id="ard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="ah dim"/>
+        </marker>
+      </defs>
+
+      <!-- lookup row -->
+      <rect x="330" y="26" width="290" height="60" rx="9" class="bx hot"/>
+      <text x="475" y="50" class="t1 hot" text-anchor="middle">Ethereum · Blockscout API</text>
+      <text x="475" y="70" class="t2" text-anchor="middle">latest transaction from 0xa322…</text>
+
+      <rect x="682" y="26" width="228" height="60" rx="9" class="bx dash"/>
+      <text x="796" y="50" class="t1" text-anchor="middle">Attacker</text>
+      <text x="796" y="70" class="t2" text-anchor="middle">sends one tx to move the C2</text>
+      <line x1="676" y1="56" x2="628" y2="56" class="ln dash" marker-end="url(#ard)"/>
+
+      <!-- lookup arrows -->
+      <path d="M362 214 L362 150 Q362 132 380 132 L420 132 L420 92" class="ln hot" marker-end="url(#ar)"/>
+      <text x="376" y="126" class="t3 hot">① ask for the latest tx</text>
+
+      <path d="M556 92 L556 132 L596 132 Q614 132 614 150 L614 214" class="ln hot" marker-end="url(#ar)"/>
+      <text x="628" y="126" class="t3 hot">② decode bytes 0–3 → IPv4</text>
+
+      <!-- machine zone -->
+      <rect x="10" y="196" width="466" height="120" rx="11" class="zone"/>
+      <text x="26" y="308" class="t4">YOUR MACHINE</text>
+
+      <!-- main flow -->
+      <rect x="26" y="214" width="180" height="60" rx="9" class="bx"/>
+      <text x="116" y="238" class="t1" text-anchor="middle">postcss.config.js</text>
+      <text x="116" y="258" class="t2" text-anchor="middle">or .vscode/tasks.json</text>
+
+      <rect x="272" y="214" width="180" height="60" rx="9" class="bx"/>
+      <text x="362" y="238" class="t1" text-anchor="middle">node loader</text>
+      <text x="362" y="258" class="t2" text-anchor="middle">detached, reparented</text>
+
+      <rect x="524" y="214" width="180" height="60" rx="9" class="bx hot"/>
+      <text x="614" y="238" class="t1 hot" text-anchor="middle">C2 server</text>
+      <text x="614" y="258" class="t2" text-anchor="middle">address known only at runtime</text>
+
+      <rect x="754" y="214" width="170" height="60" rx="9" class="bx"/>
+      <text x="839" y="238" class="t1" text-anchor="middle">clipboard stealer</text>
+      <text x="839" y="258" class="t2" text-anchor="middle">polls every 200 ms</text>
+
+      <line x1="206" y1="244" x2="266" y2="244" class="ln" marker-end="url(#ar)"/>
+      <text x="236" y="234" class="t3" text-anchor="middle">runs</text>
+
+      <line x1="452" y1="244" x2="518" y2="244" class="ln" marker-end="url(#ar)"/>
+      <text x="485" y="234" class="t3" text-anchor="middle">③ GET</text>
+
+      <line x1="704" y1="244" x2="748" y2="244" class="ln" marker-end="url(#ar)"/>
+      <text x="726" y="234" class="t3" text-anchor="middle">④</text>
+      <text x="726" y="292" class="t3" text-anchor="middle">eval'd in memory</text>
+    </svg>
+    <figcaption>The loader carries no server address. It reads one off the blockchain at run time,
+    which is why an IP blocklist cannot keep up: the operator repoints every infected machine at
+    once by sending a single transaction.</figcaption>
+  </figure>
+
+  <div class="mech">
+    <div class="mech-steps">
+      <h3>Step by step</h3>
+      <ol class="chain">
+        <li><b>Query public Ethereum RPCs</b><span>Falls through 1rpc.io, drpc.org, publicnode and blastapi, so cutting off any one endpoint changes nothing.</span></li>
+        <li><b>Read the wallet's newest transaction</b><span>Through the Blockscout API, sorted newest first.</span></li>
+        <li><b>Decode an IP from the destination address</b><span>The first eight bytes are read as two IPv4 addresses — a primary and a fallback.</span></li>
+        <li><b>Fetch stage two over plain HTTP</b><span>From <code>/0x/clb</code>, <code>/0x/cls</code> or <code>/0x/ls</code>, on port 443 to look like TLS to a port-based filter.</span></li>
+        <li><b>Decode and spawn it detached</b><span>XOR-decoded and evaluated in memory — nothing is written to disk — then <code>spawn(…, {detached:true})</code> and <code>unref()</code>, so it outlives the editor that started it.</span></li>
+      </ol>
+    </div>
+    <div class="mech-bytes">
+      <h3>Address → endpoints</h3>
+      <div class="panel">
+        <div class="panel-bar"><span class="label">20-byte destination address</span></div>
+        <div class="scroller"><div class="bytepad">
+          <div class="bytes">
+            <span class="byte a">a3</span><span class="byte a">22</span><span class="byte a">e5</span><span class="byte a">f3</span>
+            <span class="byte b">d3</span><span class="byte b">11</span><span class="byte b">d3</span><span class="byte b">08</span>
+            <span class="byte">e6</span><span class="byte">f0</span><span class="byte">12</span><span class="byte">10</span>
+            <span class="byte">63</span><span class="byte">e9</span><span class="byte">aD</span><span class="byte">C2</span>
+            <span class="byte">49</span><span class="byte">0E</span><span class="byte">f1</span><span class="byte">a…</span>
+          </div>
+          <div class="legend">
+            <span><span class="swatch" style="background:var(--accent)"></span>bytes 0–3 → primary C2</span>
+            <span><span class="swatch" style="background:var(--safe)"></span>bytes 4–7 → fallback</span>
+            <span><span class="swatch" style="background:var(--hair)"></span>remainder unused</span>
+          </div>
+        </div></div>
       </div>
-      <div class="legend">
-        <span><span class="swatch" style="background:var(--accent)"></span>bytes 0–3 → primary C2, ports 80 and 443</span>
-        <span><span class="swatch" style="background:var(--safe)"></span>bytes 4–7 → secondary C2</span>
-        <span><span class="swatch" style="background:var(--hair)"></span>remainder unused</span>
-      </div>
-      <p class="note">Stage two is then pulled from <code>/0x/clb</code>, <code>/0x/cls</code> or
-      <code>/0x/ls</code>, XOR-decoded in memory and evaluated. It never touches disk, so there is
-      nothing on the filesystem to scan afterwards. The payload observed in the wild was a
-      clipboard stealer polling every 200&nbsp;ms — passwords, tokens and wallet seed phrases.</p>
-    </div></div>
+      <p class="note">The payload observed in the wild stole clipboard contents — passwords, access
+      tokens and wallet seed phrases — from the moment the editor opened.</p>
+    </div>
   </div>
 </section>
 
