@@ -5,3 +5,5 @@ work/
 backups/
 *.bundle
 .DS_Store
+promo/.devto_url
+.devto_key
