@@ -3,17 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="How a supply-chain dropper hid behind 9,000 spaces, how to find it by hand, and how to install snare.">
-<meta property="og:title" content="Hidden in Whitespace">
-<meta property="og:description" content="A dropper committed into four repositories. The config file looked normal in every editor that opened it.">
+<meta name="description" content="How to detect and remove supply-chain malware hidden in Git repositories — a dropper that runs on git clone or when VS Code opens the folder. Free open-source scanner for macOS, Linux and Windows.">
+<meta name="keywords" content="supply chain attack, npm supply chain security, repository malware, malicious postcss.config.js, vscode tasks.json malware, folderOpen exploit, EtherHiding, blockchain C2, fake woff2 payload, clipboard stealer, git history malware, malware scanner, developer security, open source security tool">
+<meta name="author" content="AviOfLagos">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://avioflagos.github.io/snare/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="snare">
+<meta property="og:title" content="Malware that runs the moment you open the project">
+<meta property="og:description" content="A dropper family committed straight into developer repositories. It executes on the dev server or when your editor opens the folder — no npm install needed. Learn how it works, check your machine, and install snare.">
+<meta property="og:url" content="https://avioflagos.github.io/snare/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Malware that runs the moment you open the project">
+<meta name="twitter:description" content="Detect and remove supply-chain malware hidden in Git repositories. Free, open source, cross-platform.">
+<meta name="theme-color" content="#C2410C" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪤</text></svg>">
-<title>Hidden in Whitespace</title>
+<title>Repo Malware Field Guide</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
-
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"SoftwareApplication","name":"snare",
+  "applicationCategory":"SecurityApplication",
+  "operatingSystem":"macOS, Linux, Windows, WSL",
+  "description":"Command-line tool that detects and kills supply-chain malware loaders, scans every Git repository you can reach, removes the payload including from history, and notifies collaborators.",
+  "url":"https://avioflagos.github.io/snare/","codeRepository":"https://github.com/AviOfLagos/snare",
+  "license":"https://opensource.org/licenses/MIT",
+  "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}},
+ {"@type":"TechArticle","headline":"Malware that runs the moment you open the project",
+  "description":"How to detect and remove supply-chain malware hidden in Git repositories — a dropper that runs on git clone or when VS Code opens the folder. Free open-source scanner for macOS, Linux and Windows.","url":"https://avioflagos.github.io/snare/",
+  "author":{"@type":"Person","name":"AviOfLagos"}}
+]}
+</script>
 </head>
 <body>
+
 <style>
 :root{
   --ground:#FBFAF8; --surface:#FFFFFF; --sunk:#F1EFEA;
@@ -21,6 +47,7 @@
   --accent:#C2410C; --accent-soft:#FDEBE0;
   --safe:#0F7355; --safe-soft:#E4F2EC;
   --shadow:0 1px 2px rgba(20,22,28,.05),0 8px 24px -12px rgba(20,22,28,.15);
+  --navbg:rgba(251,250,248,.86);
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --body:"Instrument Sans",system-ui,-apple-system,Segoe UI,sans-serif;
   --disp:"Bricolage Grotesque","Instrument Sans",system-ui,sans-serif;
@@ -32,6 +59,7 @@
     --accent:#FF7A3D; --accent-soft:#2A1A12;
     --safe:#3FBF8F; --safe-soft:#12241D;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
+    --navbg:rgba(16,19,25,.86);
   }
 }
 :root[data-theme="dark"]{
@@ -40,40 +68,83 @@
   --accent:#FF7A3D; --accent-soft:#2A1A12;
   --safe:#3FBF8F; --safe-soft:#12241D;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.7);
+  --navbg:rgba(16,19,25,.86);
 }
 *{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{
   margin:0;background:var(--ground);color:var(--ink);
   font-family:var(--body);font-size:17px;line-height:1.65;
-  -webkit-font-smoothing:antialiased;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
 }
-.wrap{max-width:720px;margin:0 auto;padding:0 24px}
-.bleed{max-width:1080px;margin:0 auto;padding:0 24px}
-h1,h2,h3{font-family:var(--disp);text-wrap:balance;margin:0;line-height:1.1}
-h1{font-size:clamp(2.6rem,7vw,4.4rem);font-weight:800;letter-spacing:-.03em}
-h2{font-size:clamp(1.6rem,3.4vw,2.2rem);font-weight:700;letter-spacing:-.02em}
-h3{font-size:1.08rem;font-weight:600;letter-spacing:-.01em}
+.wrap{max-width:720px;margin:0 auto;padding:0 20px}
+.bleed{max-width:1080px;margin:0 auto;padding:0 20px}
+h1,h2,h3{font-family:var(--disp);text-wrap:balance;margin:0;line-height:1.12}
+h1{font-size:clamp(2.1rem,6vw,3.9rem);font-weight:800;letter-spacing:-.03em}
+h2{font-size:clamp(1.5rem,3.4vw,2.15rem);font-weight:700;letter-spacing:-.02em}
+h3{font-size:1.06rem;font-weight:600;letter-spacing:-.01em}
 p{margin:0}
 a{color:var(--accent);text-underline-offset:3px}
-code{font-family:var(--mono);font-size:.88em}
-:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+code{font-family:var(--mono);font-size:.88em;word-break:break-word}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
 
+/* ---------- nav ---------- */
+.nav{
+  position:sticky;top:0;z-index:50;
+  background:var(--navbg);backdrop-filter:saturate(180%) blur(12px);
+  -webkit-backdrop-filter:saturate(180%) blur(12px);
+  border-bottom:1px solid var(--hair);
+}
+.nav-in{
+  max-width:1080px;margin:0 auto;padding:11px 20px;
+  display:flex;align-items:center;gap:18px;
+}
+.brand{
+  font-family:var(--disp);font-weight:800;font-size:1.06rem;letter-spacing:-.02em;
+  color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:8px;flex:none;
+}
+.brand .mark{
+  width:22px;height:22px;border-radius:6px;flex:none;
+  background:var(--accent);color:var(--ground);
+  display:grid;place-items:center;font-family:var(--mono);font-size:.7rem;font-weight:700;
+}
+.nav-links{display:flex;gap:18px;margin-left:auto;align-items:center}
+.nav-links a{
+  font-size:.88rem;color:var(--muted);text-decoration:none;white-space:nowrap;
+  transition:color .15s;
+}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{
+  font-family:var(--body);font-size:.86rem;font-weight:600;
+  background:var(--accent);color:var(--ground)!important;
+  padding:7px 14px;border-radius:8px;text-decoration:none;white-space:nowrap;flex:none;
+  transition:opacity .15s;
+}
+.nav-cta:hover{opacity:.88}
+@media(max-width:720px){
+  .nav-links a:not(.nav-cta){display:none}
+  .nav-links{margin-left:auto}
+}
+
+/* ---------- shared ---------- */
 .eyebrow{
   font-family:var(--mono);font-size:.7rem;font-weight:500;
   letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
 }
-section{padding:72px 0;border-top:1px solid var(--hair)}
-section:first-of-type{border-top:none}
+section{padding:clamp(52px,8vw,76px) 0;border-top:1px solid var(--hair)}
 .stack{display:flex;flex-direction:column;gap:20px}
 .stack-s{display:flex;flex-direction:column;gap:10px}
-.lede{font-size:1.18rem;color:var(--muted);max-width:60ch}
+.lede{font-size:clamp(1.02rem,2.2vw,1.16rem);color:var(--muted);max-width:62ch}
 
 /* ---------- hero ---------- */
-.hero{padding:80px 0 64px;border:none}
-.hero h1 span{color:var(--accent)}
-.badge{
+.hero{padding:clamp(46px,7vw,72px) 0 clamp(38px,5vw,54px);border-top:none}
+.lead-in{padding-bottom:22px}
+.after-bleed{padding-top:clamp(40px,6vw,58px);border-top:none}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.kicker{
   display:inline-flex;align-items:center;gap:8px;align-self:flex-start;
-  font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;
+  font-family:var(--mono);font-size:.7rem;letter-spacing:.09em;
   padding:5px 11px;border-radius:999px;
   background:var(--accent-soft);color:var(--accent);
   border:1px solid color-mix(in srgb,var(--accent) 25%,transparent);
@@ -81,185 +152,252 @@ section:first-of-type{border-top:none}
 .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
 @media (prefers-reduced-motion:no-preference){
   .dot{animation:pulse 2.4s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 }
+.cta-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn-lg{
+  font-family:var(--body);font-size:.95rem;font-weight:600;
+  padding:11px 20px;border-radius:9px;text-decoration:none;
+  display:inline-flex;align-items:center;gap:8px;transition:opacity .15s,border-color .15s;
+}
+.btn-primary{background:var(--accent);color:var(--ground)}
+.btn-primary:hover{opacity:.88}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--hair)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
 
-/* ---------- evidence panel ---------- */
+/* what this page covers */
+.covers{
+  display:grid;gap:1px;background:var(--hair);
+  border:1px solid var(--hair);border-radius:11px;overflow:hidden;margin-top:8px;
+}
+@media(min-width:640px){.covers{grid-template-columns:repeat(3,1fr)}}
+.cover{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.cover b{font-size:.94rem}
+.cover span{font-size:.86rem;color:var(--muted)}
+
+/* ---------- panels + copy ---------- */
 .panel{
   background:var(--sunk);border:1px solid var(--hair);border-radius:10px;
   box-shadow:var(--shadow);overflow:hidden;
 }
 .panel-bar{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:9px 14px;border-bottom:1px solid var(--hair);background:var(--surface);
-  font-family:var(--mono);font-size:.74rem;color:var(--muted);flex-wrap:wrap;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 10px 8px 14px;border-bottom:1px solid var(--hair);background:var(--surface);
+  font-family:var(--mono);font-size:.73rem;color:var(--muted);
 }
-.scroller{overflow-x:auto;background:var(--sunk)}
+.panel-bar .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-actions{display:flex;gap:6px;flex:none}
+.scroller{overflow-x:auto;background:var(--sunk);-webkit-overflow-scrolling:touch}
 pre{
-  margin:0;padding:16px;font-family:var(--mono);font-size:.82rem;line-height:1.75;
-  white-space:pre;color:var(--ink);
+  margin:0;padding:15px;font-family:var(--mono);font-size:clamp(.74rem,1.9vw,.82rem);
+  line-height:1.75;white-space:pre;color:var(--ink);
 }
 .gutter{color:var(--muted);user-select:none}
 .ws{color:var(--accent);opacity:.42}
 .payload{color:var(--accent);font-weight:500}
 .hidden-ws{color:transparent}
-
 .btn{
-  font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;
-  padding:5px 11px;border-radius:6px;cursor:pointer;
-  background:var(--surface);color:var(--ink);
+  font-family:var(--mono);font-size:.71rem;letter-spacing:.03em;
+  padding:5px 10px;border-radius:6px;cursor:pointer;
+  background:var(--surface);color:var(--muted);
   border:1px solid var(--hair);transition:border-color .15s,color .15s;
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
 }
 .btn:hover{border-color:var(--accent);color:var(--accent)}
 .btn[aria-pressed="true"]{background:var(--accent);color:var(--ground);border-color:var(--accent)}
-.note{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.btn.done{color:var(--safe);border-color:var(--safe)}
+.btn svg{width:11px;height:11px;flex:none}
+.note{font-family:var(--mono);font-size:.73rem;color:var(--muted);line-height:1.6}
 
 /* ---------- routes ---------- */
-.routes{display:grid;gap:16px;grid-template-columns:1fr}
-@media(min-width:760px){.routes{grid-template-columns:1fr 1fr}}
+.routes{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:700px){.routes{grid-template-columns:1fr 1fr}}
 .route{
   background:var(--surface);border:1px solid var(--hair);border-radius:10px;
-  padding:22px;display:flex;flex-direction:column;gap:12px;
+  padding:20px;display:flex;flex-direction:column;gap:11px;
 }
 .route .trigger{
-  font-family:var(--mono);font-size:.74rem;color:var(--accent);
-  padding-top:10px;border-top:1px dashed var(--hair);
+  font-family:var(--mono);font-size:.73rem;color:var(--accent);
+  padding-top:10px;border-top:1px dashed var(--hair);margin-top:auto;
 }
-.filename{font-family:var(--mono);font-size:.8rem;color:var(--muted);word-break:break-all}
+.filename{font-family:var(--mono);font-size:.79rem;color:var(--muted);word-break:break-all}
+.route p.d{font-size:.93rem;color:var(--muted)}
 
-/* ---------- chain steps (a real sequence) ---------- */
-ol.chain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;counter-reset:s}
+/* ---------- chain ---------- */
+ol.chain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;counter-reset:s}
 ol.chain li{
-  counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:14px;
-  padding:14px 0;border-bottom:1px solid var(--hair);align-items:start;
+  counter-increment:s;display:grid;grid-template-columns:32px 1fr;gap:13px;
+  padding:13px 0;border-bottom:1px solid var(--hair);align-items:start;
 }
 ol.chain li:last-child{border-bottom:none}
 ol.chain li::before{
   content:counter(s,decimal-leading-zero);
-  font-family:var(--mono);font-size:.74rem;color:var(--accent);padding-top:3px;
+  font-family:var(--mono);font-size:.73rem;color:var(--accent);padding-top:3px;
 }
 ol.chain b{font-weight:600}
-ol.chain span{color:var(--muted);font-size:.95rem;display:block;margin-top:2px}
+ol.chain span{color:var(--muted);font-size:.94rem;display:block;margin-top:2px}
 
-/* ---------- byte decode ---------- */
-.bytes{display:flex;flex-wrap:wrap;gap:4px;font-family:var(--mono);font-size:.76rem}
-.byte{
-  padding:6px 7px;border-radius:5px;background:var(--surface);
-  border:1px solid var(--hair);color:var(--muted);
-}
+/* ---------- bytes ---------- */
+.bytes{display:flex;flex-wrap:wrap;gap:4px;font-family:var(--mono);font-size:.74rem}
+.byte{padding:5px 7px;border-radius:5px;background:var(--surface);border:1px solid var(--hair);color:var(--muted)}
 .byte.a{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent);color:var(--accent);font-weight:700}
 .byte.b{background:var(--safe-soft);border-color:color-mix(in srgb,var(--safe) 35%,transparent);color:var(--safe);font-weight:700}
-.legend{display:flex;flex-wrap:wrap;gap:18px;font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:.73rem;color:var(--muted)}
 .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
 
 /* ---------- checks ---------- */
-.check{display:flex;flex-direction:column;gap:8px;padding:18px 0;border-bottom:1px solid var(--hair)}
-.check:last-child{border-bottom:none}
-.verdict{font-family:var(--mono);font-size:.76rem;color:var(--safe)}
+.check{display:flex;flex-direction:column;gap:9px;padding:20px 0;border-bottom:1px solid var(--hair)}
+.check:last-of-type{border-bottom:none}
+.verdict{font-family:var(--mono);font-size:.75rem;color:var(--safe)}
 .verdict.bad{color:var(--accent)}
 
 /* ---------- verbs ---------- */
-.verbs{display:grid;gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:10px;overflow:hidden}
-@media(min-width:700px){.verbs{grid-template-columns:1fr 1fr}}
-.verb{background:var(--surface);padding:20px;display:flex;flex-direction:column;gap:7px}
-.verb .cmd{font-family:var(--mono);font-size:.8rem;color:var(--accent)}
-.verb p{font-size:.94rem;color:var(--muted)}
+.verbs{display:grid;gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:11px;overflow:hidden}
+@media(min-width:660px){.verbs{grid-template-columns:1fr 1fr}}
+.verb{background:var(--surface);padding:19px;display:flex;flex-direction:column;gap:6px}
+.verb .cmd{font-family:var(--mono);font-size:.79rem;color:var(--accent);word-break:break-all}
+.verb p{font-size:.93rem;color:var(--muted)}
 
 /* ---------- tabs ---------- */
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:13px}
 .tab{
-  font-family:var(--mono);font-size:.76rem;padding:7px 13px;border-radius:7px;cursor:pointer;
-  background:transparent;color:var(--muted);border:1px solid var(--hair);
+  font-family:var(--mono);font-size:.75rem;padding:7px 13px;border-radius:7px;cursor:pointer;
+  background:transparent;color:var(--muted);border:1px solid var(--hair);transition:.15s;
 }
+.tab:hover{color:var(--ink)}
 .tab[aria-selected="true"]{background:var(--accent);color:var(--ground);border-color:var(--accent)}
 .pane[hidden]{display:none}
 
-table{width:100%;border-collapse:collapse;font-size:.92rem}
+table{width:100%;border-collapse:collapse;font-size:.91rem}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
-th{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+th{font-family:var(--mono);font-size:.71rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
 td code{color:var(--accent)}
+.table-scroll{overflow-x:auto}
 
 .callout{
   background:var(--surface);border:1px solid var(--hair);border-left:3px solid var(--accent);
-  border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:8px;
+  border-radius:8px;padding:17px 19px;display:flex;flex-direction:column;gap:7px;
 }
 .callout h3{color:var(--accent)}
-footer{padding:56px 0 72px;border-top:1px solid var(--hair);color:var(--muted);font-size:.9rem}
-.foot-links{display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:.78rem;margin-top:8px}
+.callout p{font-size:.95rem}
+
+footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);font-size:.89rem}
+.foot-links{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:.77rem;margin-top:10px}
 </style>
 
-<div class="wrap hero stack">
-  <span class="badge"><span class="dot"></span>ACTIVE CAMPAIGN · OBSERVED IN THE WILD</span>
-  <h1>It was hiding behind<br><span>nine thousand spaces.</span></h1>
-  <p class="lede">A dropper committed straight into four repositories. The config file looked
-  completely normal in every editor that opened it. Cloning the repo and running the dev
-  server was enough — no <code>npm install</code> required.</p>
-</div>
-
-<div class="bleed">
-  <div class="panel">
-    <div class="panel-bar">
-      <span>postcss.config.js — as committed</span>
-      <button class="btn" id="reveal" aria-pressed="false">reveal whitespace</button>
-    </div>
-    <div class="scroller" id="scroller">
-      <pre id="code"></pre>
+<nav class="nav">
+  <div class="nav-in">
+    <a class="brand" href="#top"><span class="mark">sn</span>snare</a>
+    <div class="nav-links">
+      <a href="#threat">The threat</a>
+      <a href="#mechanism">How it works</a>
+      <a href="#detect">Check your machine</a>
+      <a href="#install">Install</a>
+      <a class="nav-cta" href="#install">Install snare</a>
     </div>
   </div>
-  <p class="note" style="margin-top:10px" id="hint">
-    Line 5 is 9,135 characters long. Scroll it sideways — or reveal the whitespace.
-  </p>
+</nav>
+
+<div class="wrap hero stack" id="top">
+  <span class="kicker"><span class="dot"></span>ACTIVE TECHNIQUE · SEEN IN PRIVATE AND PUBLIC REPOS</span>
+  <h1>Malware that runs the moment you <em>open the project</em>.</h1>
+  <p class="lede">A dropper family is being committed directly into developer repositories —
+  buried inside ordinary config files and disguised as font assets. It executes when you start
+  the dev server, or the instant your editor opens the folder. <strong>No <code>npm install</code>
+  required.</strong> One sample sat in a repository for five months before anyone noticed.</p>
+  <p class="lede"><strong>snare</strong> is a free, open-source command-line tool that watches your
+  machine for the loader and kills it, then scans every Git repository you can reach, cleans out
+  what it finds, and helps you warn your collaborators.</p>
+  <div class="cta-row">
+    <a class="btn-lg btn-primary" href="#install">Install snare</a>
+    <a class="btn-lg btn-ghost" href="https://github.com/AviOfLagos/snare">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      Source on GitHub
+    </a>
+  </div>
+  <div class="covers">
+    <div class="cover"><b>What it does</b><span>The two ways it gets executed, and why an IP blocklist is useless against it.</span></div>
+    <div class="cover"><b>How to check</b><span>Four commands you can run right now on any clone. No tools needed.</span></div>
+    <div class="cover"><b>How to stay clean</b><span>Install snare on macOS, Linux, Windows or WSL in about a minute.</span></div>
+  </div>
 </div>
 
 <div class="wrap">
 
-<section class="stack">
-  <span class="eyebrow">Two routes in</span>
-  <h2>Neither one needs you to install anything</h2>
-  <p class="lede">The same payload shipped two ways. Both execute from an ordinary developer
-  action, which is what makes this family effective.</p>
+<section class="stack" id="threat">
+  <span class="eyebrow">The threat</span>
+  <h2>Two routes in, neither of which you'd think to check</h2>
+  <p class="lede">The same payload ships two ways. Both fire from a completely ordinary developer
+  action — which is exactly why this family works.</p>
   <div class="routes">
     <div class="route">
-      <h3>Opening the folder</h3>
+      <h3>Opening the folder in your editor</h3>
       <p class="filename">.vscode/tasks.json</p>
-      <p style="font-size:.95rem;color:var(--muted)">A task labelled <code>eslint-check</code>,
-      marked <code>"hide": true</code> and <code>"reveal": "never"</code>, so it never appears
-      in the terminal panel. It runs <code>node ./public/fonts/fa-solid-400.woff2</code>.</p>
+      <p class="d">A task labelled <code>eslint-check</code>, marked <code>"hide": true</code> and
+      <code>"reveal": "never"</code> so it never appears in the terminal panel. It runs
+      <code>node ./public/fonts/fa-solid-400.woff2</code>.</p>
       <p class="trigger">▸ fires on <code>"runOn": "folderOpen"</code></p>
     </div>
     <div class="route">
       <h3>Starting the dev server</h3>
       <p class="filename">postcss.config.js</p>
-      <p style="font-size:.95rem;color:var(--muted)">The payload is appended to line 5 after
-      thousands of spaces. The file reads as four correct lines of config, because the rest is
-      off the right edge of the viewport.</p>
+      <p class="d">The payload is appended to the last line after thousands of spaces. The file
+      reads as four correct lines of config, because everything else is far off the right edge of
+      the viewport.</p>
       <p class="trigger">▸ fires on <code>next dev</code> / <code>next build</code></p>
     </div>
   </div>
   <div class="callout">
     <h3>The font is not a font</h3>
-    <p>A genuine <code>.woff2</code> begins with the magic bytes <code>wOF2</code>. This file
-    begins with 507 spaces, then JavaScript. Disguising the payload as a binary asset keeps it
-    out of code review — nobody diffs a font.</p>
+    <p>A genuine <code>.woff2</code> file begins with the magic bytes <code>wOF2</code>. This one
+    begins with 507 spaces, then JavaScript. Disguising a payload as a binary asset keeps it out of
+    code review entirely — nobody opens a font in a diff.</p>
   </div>
 </section>
 
-<section class="stack">
-  <span class="eyebrow">Command and control</span>
-  <h2>The address lives on a blockchain</h2>
-  <p class="lede">This is why blocking an IP achieves nothing. There is no hardcoded server —
-  the loader derives one, fresh, on every run.</p>
+<section class="stack lead-in">
+  <span class="eyebrow">Why nobody spotted it</span>
+  <h2>The file looks completely normal</h2>
+  <p class="lede">Here is the actual shape of an infected <code>postcss.config.js</code>. Four
+  ordinary lines, then a gap wide enough to push the payload past any screen. Reveal the whitespace
+  to see what your editor was not showing you.</p>
+</section>
+</div>
+
+<div class="bleed">
+  <div class="panel">
+    <div class="panel-bar">
+      <span class="label">postcss.config.js — as committed</span>
+      <div class="bar-actions">
+        <button class="btn" id="reveal" aria-pressed="false">reveal whitespace</button>
+      </div>
+    </div>
+    <div class="scroller" id="scroller"><pre id="code"></pre></div>
+  </div>
+  <p class="note" style="margin-top:9px" id="hint">Line 5 is 9,135 characters long. Scroll it
+  sideways — or reveal the whitespace.</p>
+</div>
+
+<div class="wrap">
+
+<section class="stack after-bleed" id="mechanism">
+  <span class="eyebrow">How it works</span>
+  <h2>The address it phones home to lives on a blockchain</h2>
+  <p class="lede">This is why blocking an IP address achieves nothing. There is no hardcoded
+  server — the loader derives a fresh one every time it runs, using a documented technique known
+  as <em>EtherHiding</em>. The operator moves their infrastructure by sending a single
+  transaction.</p>
   <ol class="chain">
-    <li><b>Query public Ethereum RPCs</b><span>Falls through a list — 1rpc.io, drpc.org, publicnode, blastapi — so no single endpoint can be cut off.</span></li>
-    <li><b>Read one wallet's outbound transactions</b><span>Via the Blockscout API, newest first.</span></li>
-    <li><b>Take the destination address of the latest one</b><span>The operator controls this by simply sending a transaction.</span></li>
-    <li><b>Decode two IPv4 addresses out of its bytes</b><span>The first eight bytes of the 20-byte address are read as four octets each.</span></li>
-    <li><b>Fetch stage two and spawn it detached</b><span><code>spawn(..., {detached:true})</code> then <code>unref()</code> — the process reparents away, surviving the editor that started it.</span></li>
+    <li><b>Query public Ethereum RPC endpoints</b><span>It falls through a list — 1rpc.io, drpc.org, publicnode, blastapi — so cutting off any one of them changes nothing.</span></li>
+    <li><b>Read one wallet's outbound transactions</b><span>Through the Blockscout API, newest first.</span></li>
+    <li><b>Take the destination address of the latest one</b><span>Which the operator controls simply by sending a transaction to a new address.</span></li>
+    <li><b>Decode two IPv4 addresses from its bytes</b><span>The first eight bytes of the 20-byte address are read as four octets each.</span></li>
+    <li><b>Fetch stage two and spawn it detached</b><span><code>spawn(…, {detached:true})</code> then <code>unref()</code>. The process reparents away and outlives the editor that started it.</span></li>
   </ol>
 
-  <div class="panel" style="margin-top:8px">
-    <div class="panel-bar"><span>address → two C2 endpoints</span></div>
-    <div class="scroller"><div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+  <div class="panel">
+    <div class="panel-bar"><span class="label">wallet address → two live C2 endpoints</span></div>
+    <div class="scroller"><div style="padding:17px;display:flex;flex-direction:column;gap:13px">
       <div class="bytes">
         <span class="byte a">a3</span><span class="byte a">22</span><span class="byte a">e5</span><span class="byte a">f3</span>
         <span class="byte b">d3</span><span class="byte b">11</span><span class="byte b">d3</span><span class="byte b">08</span>
@@ -270,90 +408,102 @@ footer{padding:56px 0 72px;border-top:1px solid var(--hair);color:var(--muted);f
       <div class="legend">
         <span><span class="swatch" style="background:var(--accent)"></span>bytes 0–3 → primary C2, ports 80 and 443</span>
         <span><span class="swatch" style="background:var(--safe)"></span>bytes 4–7 → secondary C2</span>
-        <span><span class="swatch" style="background:var(--hair)"></span>remainder ignored</span>
+        <span><span class="swatch" style="background:var(--hair)"></span>remainder unused</span>
       </div>
       <p class="note">Stage two is then pulled from <code>/0x/clb</code>, <code>/0x/cls</code> or
-      <code>/0x/ls</code> — XOR-encoded, decoded in memory, <code>eval</code>'d. It never touches disk.
-      The observed payload was a clipboard stealer polling every 200&nbsp;ms.</p>
+      <code>/0x/ls</code>, XOR-decoded in memory and evaluated. It never touches disk, so there is
+      nothing on the filesystem to scan afterwards. The payload observed in the wild was a
+      clipboard stealer polling every 200&nbsp;ms — passwords, tokens and wallet seed phrases.</p>
     </div></div>
   </div>
 </section>
 
-<section class="stack">
+<section class="stack" id="detect">
   <span class="eyebrow">Check by hand</span>
-  <h2>Four checks, no tools required</h2>
-  <p class="lede">Run these against any clone you have. They take about a minute.</p>
+  <h2>Four checks you can run right now</h2>
+  <p class="lede">No tools required. Run these against any clone on your machine — the whole thing
+  takes about a minute.</p>
 
   <div class="check">
     <h3>1 · Is a loader running right now?</h3>
-    <div class="panel"><div class="scroller"><pre>ps -eo pid,args | grep -E "node .*-e .*global\[" | grep -v grep</pre></div></div>
-    <p class="verdict">No output means nothing is running.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">macOS · Linux</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>ps -eo pid,args | grep -E "node .*-e .*global\[" | grep -v grep</pre></div></div>
+    <p class="verdict">No output means nothing is running. Any output is a live process — kill it.</p>
   </div>
 
   <div class="check">
     <h3>2 · Does any file carry the operator's wallet?</h3>
-    <div class="panel"><div class="scroller"><pre>grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .</pre></div></div>
-    <p class="verdict">Also check history: <code>git log --all -S "0xa322E5f3" --pickaxe-regex</code></p>
+    <div class="panel"><div class="panel-bar"><span class="label">working tree</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .</pre></div></div>
+    <div class="panel" style="margin-top:8px"><div class="panel-bar"><span class="label">and the full history — a deleted file still lives in Git</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>git log --all -S "0xa322E5f3" --pickaxe-regex --oneline</pre></div></div>
   </div>
 
   <div class="check">
     <h3>3 · Is a task set to run when you open the folder?</h3>
-    <div class="panel"><div class="scroller"><pre>grep -rn "folderOpen" .vscode/tasks.json</pre></div></div>
-    <p class="verdict bad">Any hit here executes the moment the folder opens. Treat as hostile.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">editor auto-run</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>grep -rn "folderOpen" .vscode/tasks.json</pre></div></div>
+    <p class="verdict bad">Any hit executes the moment the folder opens. Treat it as hostile until proven otherwise.</p>
   </div>
 
   <div class="check">
-    <h3>4 · Are your fonts actually fonts?</h3>
-    <div class="panel"><div class="scroller"><pre>head -c 4 public/fonts/*.woff2</pre></div></div>
-    <p class="verdict">Every real font prints <code>wOF2</code>. Spaces mean it is a script.</p>
+    <h3>4 · Are your font files actually fonts?</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">magic bytes</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>head -c 4 public/fonts/*.woff2</pre></div></div>
+    <p class="verdict">Every real font prints <code>wOF2</code>. Spaces mean you are looking at a script.</p>
   </div>
 
   <div class="callout">
     <h3>Look for the long line</h3>
-    <p>The giveaway is geometry, not content. <code>awk 'length &gt; 1500 {print FILENAME, FNR}' *.js</code>
-    finds any config padded out to hide something past the edge of the screen. A hand-written config
-    file has no business being 9,000 characters wide.</p>
+    <p>The most reliable giveaway is geometry, not content. This finds any file padded out to hide
+    something past the edge of the screen — a hand-written config has no business being 9,000
+    characters wide.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">hidden-payload heuristic</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>awk 'length > 1500 {print FILENAME": line "FNR" ("length" chars)"}' \
+  $(find . -name "*.js" -not -path "*/node_modules/*")</pre></div></div>
   </div>
 </section>
 
 <section class="stack">
   <span class="eyebrow">The tool</span>
-  <h2>snare does all of that, everywhere you have code</h2>
-  <p class="lede">Built while cleaning up this exact infection — four repositories across four
-  organisations, which re-infected a freshly reinstalled machine on the next clone.</p>
+  <h2>snare does all of this, everywhere you keep code</h2>
+  <p class="lede">Four commands. It uses your own GitHub credentials and ships no token of its own.</p>
   <div class="verbs">
     <div class="verb">
       <span class="cmd">snare guard install</span>
-      <h3>Track</h3>
-      <p>Watches for the loader and kills it — process and children — within about a second. Only
-      ever kills interpreters, so a shell that merely mentions an indicator is left alone.</p>
+      <h3>Watch this machine</h3>
+      <p>Detects the loader and kills it — process and children — within about a second, then saves
+      the evidence. It only ever kills interpreters, so a shell that merely mentions an indicator is
+      left alone.</p>
     </div>
     <div class="verb">
       <span class="cmd">snare scan github</span>
-      <h3>Find</h3>
+      <h3>Scan every repo</h3>
       <p>Checks every repository you can reach through the API without cloning any of them.
       <code>snare scan repo .</code> goes deeper on a clone: working tree, every branch, full history.</p>
     </div>
     <div class="verb">
       <span class="cmd">snare fix owner/repo</span>
-      <h3>Fix</h3>
-      <p>Backs up to a bundle first, always. Cleans branch tips, or purges the payload from every
-      commit in history. Dry run unless you say otherwise.</p>
+      <h3>Clean it out</h3>
+      <p>Writes a backup bundle first, always. Cleans branch tips, or purges the payload from every
+      commit in history. Dry run unless you explicitly say otherwise.</p>
     </div>
     <div class="verb">
       <span class="cmd">snare notify owner/repo</span>
-      <h3>Inform</h3>
-      <p>Files a GitHub issue mentioning your collaborators, and opens a pre-filled mail draft per
-      person. It never sends anything — you send from your own account.</p>
+      <h3>Warn your team</h3>
+      <p>Files a GitHub issue mentioning your collaborators and opens a pre-filled mail draft for
+      each one. It never sends anything — you send from your own account.</p>
     </div>
   </div>
 </section>
 
-<section class="stack">
+<section class="stack" id="install">
   <span class="eyebrow">Install</span>
   <h2>Pick your machine</h2>
+  <p class="lede">Free and open source under the MIT licence. Requires <code>bash</code>,
+  <code>git</code>, <code>python3</code> and the GitHub CLI.</p>
   <div>
-    <div class="tabs" role="tablist">
+    <div class="tabs" role="tablist" aria-label="Platform">
       <button class="tab" role="tab" aria-selected="true"  data-p="mac">macOS</button>
       <button class="tab" role="tab" aria-selected="false" data-p="linux">Linux</button>
       <button class="tab" role="tab" aria-selected="false" data-p="win">Windows</button>
@@ -361,134 +511,205 @@ footer{padding:56px 0 72px;border-top:1px solid var(--hair);color:var(--muted);f
     </div>
 
     <div class="pane" id="p-mac">
-      <div class="panel"><div class="scroller"><pre>brew install git gh python3 git-filter-repo
+      <div class="panel"><div class="panel-bar"><span class="label">macOS · Homebrew</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre>brew install git gh python3 git-filter-repo
 
 git clone https://github.com/AviOfLagos/snare ~/snare
-cd ~/snare &amp;&amp; ./install.sh
+cd ~/snare && ./install.sh
 gh auth login
 snare doctor</pre></div></div>
-      <p class="note" style="margin-top:10px">Guard runs as a <code>launchd</code> user agent, started at login.</p>
+      <p class="note" style="margin-top:9px">The guard runs as a <code>launchd</code> user agent,
+      started automatically at login.</p>
     </div>
 
     <div class="pane" id="p-linux" hidden>
-      <div class="panel"><div class="scroller"><pre># Debian / Ubuntu
+      <div class="panel"><div class="panel-bar"><span class="label">Linux</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre># Debian / Ubuntu
 sudo apt install -y git python3
-# gh: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-
-# Fedora    sudo dnf install -y git python3 gh
-# Arch      sudo pacman -S git python github-cli
+# gh: github.com/cli/cli/blob/trunk/docs/install_linux.md
+#
+# Fedora:  sudo dnf install -y git python3 gh
+# Arch:    sudo pacman -S git python github-cli
 
 git clone https://github.com/AviOfLagos/snare ~/snare
-cd ~/snare &amp;&amp; ./install.sh
-gh auth login</pre></div></div>
-      <p class="note" style="margin-top:10px">Guard runs as a <code>systemd --user</code> unit.
-      No systemd? Run <code>snare guard run --interval 1</code> yourself.</p>
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">The guard runs as a <code>systemd --user</code> unit.
+      No systemd? Run <code>snare guard run --interval 1</code> yourself under your own supervisor.</p>
     </div>
 
     <div class="pane" id="p-win" hidden>
-      <div class="panel"><div class="scroller"><pre>winget install Git.Git GitHub.cli Python.Python.3.12
+      <div class="panel"><div class="panel-bar"><span class="label">Windows · Git Bash</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre>winget install Git.Git GitHub.cli Python.Python.3.12
 
 # then, from Git Bash — not cmd or PowerShell
 git clone https://github.com/AviOfLagos/snare ~/snare
-cd ~/snare &amp;&amp; ./install.sh
-gh auth login</pre></div></div>
-      <p class="note" style="margin-top:10px">snare is bash, so it needs Git Bash or WSL.
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">snare is written in bash, so it needs Git Bash or WSL.
       <code>snare guard install</code> registers a logon Scheduled Task.</p>
     </div>
 
     <div class="pane" id="p-wsl" hidden>
-      <div class="panel"><div class="scroller"><pre>sudo apt install -y git python3
+      <div class="panel"><div class="panel-bar"><span class="label">Windows Subsystem for Linux</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre>sudo apt install -y git python3
 git clone https://github.com/AviOfLagos/snare ~/snare
-cd ~/snare &amp;&amp; ./install.sh
-gh auth login</pre></div></div>
-      <p class="note" style="margin-top:10px">The guard only sees processes inside WSL, not Windows
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">The guard only sees processes inside WSL, not Windows
       itself. If you develop on Windows proper, run snare from Git Bash instead.</p>
     </div>
   </div>
 
-  <table style="margin-top:12px">
-    <thead><tr><th>Requirement</th><th>Why</th></tr></thead>
-    <tbody>
-      <tr><td><code>bash</code>, <code>git</code>, <code>python3</code></td><td>Core. Present by default on macOS and most Linux.</td></tr>
-      <tr><td><code>gh</code></td><td>All GitHub access uses <em>your</em> credentials — snare ships no token.</td></tr>
-      <tr><td><code>git-filter-repo</code></td><td>Optional. Only for <code>snare fix --purge-history</code>.</td></tr>
-    </tbody>
-  </table>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Requirement</th><th>Why it is needed</th></tr></thead>
+      <tbody>
+        <tr><td><code>bash</code> <code>git</code> <code>python3</code></td><td>Core. Already present on macOS and most Linux distributions.</td></tr>
+        <tr><td><code>gh</code></td><td>All GitHub access uses <em>your</em> credentials. snare ships no token and stores none.</td></tr>
+        <tr><td><code>git-filter-repo</code></td><td>Optional — only for <code>snare fix --purge-history</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
 <section class="stack">
   <span class="eyebrow">Limits</span>
-  <h2>What this does not do</h2>
-  <p class="lede">A guard that oversells itself is worse than no guard.</p>
+  <h2>What snare does not do</h2>
+  <p class="lede">A security tool that oversells itself is worse than no tool at all.</p>
   <div class="stack-s">
-    <p>It polls once a second, so a payload can act before it is caught. It cannot see code already
-    running inside another process, and it will miss variants using different infrastructure.
-    <b>Removing the malware from the repository is the actual fix</b> — a running guard is never
-    permission to open an untrusted repo.</p>
-    <p>Scanning through the API sees <b>branch tips only</b>. A payload committed and later deleted
-    survives in history; use <code>snare scan repo</code> on a clone to catch that.</p>
-    <p>Rewriting history does not touch <b>forks, pull-request refs, or objects still reachable by
-    SHA</b>. Ask GitHub Support to garbage-collect after a purge.</p>
+    <p>The guard polls once per second, so a payload can still act before it is caught. It cannot
+    see code already running inside another process, and it will miss variants built on different
+    infrastructure. <strong>Removing the malware from the repository is the actual fix</strong> — a
+    running guard is never permission to open a repo you do not trust.</p>
+    <p>Scanning through the GitHub API sees <strong>branch tips only</strong>. A payload that was
+    committed and later deleted survives in history; use <code>snare scan repo</code> on a clone to
+    catch that.</p>
+    <p>Rewriting history does not touch <strong>forks, pull-request refs, or objects still
+    reachable by SHA</strong>. Ask GitHub Support to garbage-collect after a purge.</p>
   </div>
 </section>
 
 <footer>
-  <p>Indicators and analysis published so others can detect this family. Payload excerpts are
-  truncated and defanged.</p>
+  <p>Indicators and analysis are published so that other developers can detect this family in their
+  own repositories. Payload excerpts on this page are truncated and defanged. Findings come from a
+  first-hand investigation in August 2026.</p>
   <div class="foot-links">
     <a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a>
-    <span>MIT</span>
+    <a href="https://github.com/AviOfLagos/snare#readme">Documentation</a>
+    <a href="https://github.com/AviOfLagos/snare/issues">Report a variant</a>
+    <span>MIT licence</span>
   </div>
 </footer>
 </div>
 
 <script>
 (function(){
+  "use strict";
+
+  /* ---- hero whitespace reveal ---- */
   var GAP = 9000, LEADIN = "};";
   var payload = "global.i=\"A8-…\";global.r=require;const http=require(\"http\"),{spawn}=require(\"child_process\"),S=\"0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a\".toLowerCase(),I=\"https://eth.blockscout.com/api\"… /* truncated */";
-  var lines = [
-    ["1","module.exports = {"],
-    ["2","  plugins: {"],
-    ["3","    '@tailwindcss/postcss': {},"],
-    ["4","  },"]
-  ];
+  var lines = [["1","module.exports = {"],["2","  plugins: {"],["3","    '@tailwindcss/postcss': {},"],["4","  },"]];
   var code = document.getElementById("code"),
       btn = document.getElementById("reveal"),
       scroller = document.getElementById("scroller"),
       hint = document.getElementById("hint"),
       on = false;
 
-  function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
   function render(){
     var h = "";
-    lines.forEach(function(l){
-      h += '<span class="gutter">'+l[0]+'  </span>'+esc(l[1])+"\n";
-    });
+    lines.forEach(function(l){ h += '<span class="gutter">'+l[0]+'  </span>'+esc(l[1])+"\n"; });
     var gap = new Array(GAP+1).join(on ? "·" : " ");
     h += '<span class="gutter">5  </span>'+esc(LEADIN)
        + '<span class="'+(on?"ws":"hidden-ws")+'">'+gap+"</span>"
-       + '<span class="payload">'+esc(payload)+"</span>\n";
-    h += '<span class="gutter">6  </span>';
+       + '<span class="payload">'+esc(payload)+"</span>\n"
+       + '<span class="gutter">6  </span>';
     code.innerHTML = h;
   }
 
-  btn.addEventListener("click", function(){
-    on = !on;
-    btn.setAttribute("aria-pressed", String(on));
-    btn.textContent = on ? "hide whitespace" : "reveal whitespace";
-    render();
-    if(on){
-      hint.textContent = "Every dot is one space the attacker used to push the payload off-screen.";
+  if(btn){
+    btn.addEventListener("click", function(){
+      on = !on;
+      btn.setAttribute("aria-pressed", String(on));
+      btn.textContent = on ? "hide whitespace" : "reveal whitespace";
+      render();
       var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      scroller.scrollTo({left: scroller.scrollWidth, behavior: reduce ? "auto" : "smooth"});
-    } else {
-      hint.textContent = "Line 5 is 9,135 characters long. Scroll it sideways — or reveal the whitespace.";
-      scroller.scrollTo({left:0, behavior:"auto"});
-    }
-  });
-  render();
+      if(on){
+        hint.textContent = "Every dot is one space the attacker used to push the payload off-screen.";
+        scroller.scrollTo({left: scroller.scrollWidth, behavior: reduce ? "auto" : "smooth"});
+      } else {
+        hint.textContent = "Line 5 is 9,135 characters long. Scroll it sideways — or reveal the whitespace.";
+        scroller.scrollTo({left:0, behavior:"auto"});
+      }
+    });
+    render();
+  }
 
+  /* ---- copy buttons on every code panel ---- */
+  var ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1.5"/><path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1"/></svg>';
+
+  function copyText(text){
+    if(navigator.clipboard && window.isSecureContext){ return navigator.clipboard.writeText(text); }
+    return new Promise(function(resolve, reject){
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly","");
+      ta.style.cssText = "position:absolute;left:-9999px;top:0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy") ? resolve() : reject(); }
+      catch(e){ reject(e); }
+      finally { document.body.removeChild(ta); }
+    });
+  }
+
+  document.querySelectorAll(".panel").forEach(function(panel){
+    var pre = panel.querySelector("pre");
+    if(!pre || pre.id === "code") return;          // the hero specimen is not copyable code
+
+    var bar = panel.querySelector(".panel-bar");
+    if(!bar){
+      bar = document.createElement("div");
+      bar.className = "panel-bar";
+      bar.innerHTML = '<span class="label">shell</span><div class="bar-actions"></div>';
+      panel.insertBefore(bar, panel.firstChild);
+    }
+    var actions = bar.querySelector(".bar-actions");
+    if(!actions){
+      actions = document.createElement("div");
+      actions.className = "bar-actions";
+      bar.appendChild(actions);
+    }
+
+    var b = document.createElement("button");
+    b.className = "btn";
+    b.type = "button";
+    b.innerHTML = ICON + "<span>copy</span>";
+    b.setAttribute("aria-label","Copy this command");
+    b.addEventListener("click", function(){
+      copyText(pre.innerText).then(function(){
+        b.classList.add("done");
+        b.querySelector("span").textContent = "copied";
+        setTimeout(function(){
+          b.classList.remove("done");
+          b.querySelector("span").textContent = "copy";
+        }, 1600);
+      }).catch(function(){
+        b.querySelector("span").textContent = "select all";
+        var r = document.createRange(); r.selectNodeContents(pre);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      });
+    });
+    actions.appendChild(b);
+  });
+
+  /* ---- platform tabs ---- */
   var tabs = document.querySelectorAll(".tab");
   tabs.forEach(function(t){
     t.addEventListener("click", function(){
