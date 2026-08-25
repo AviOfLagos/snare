@@ -1,13 +1,28 @@
 # snare
 
-**[Read the write-up →](https://avioflagos.github.io/snare/)** — how the malware works, how to find it by hand, install instructions per platform.
+**Detect and remove supply-chain malware hidden in Git repositories.**
 
-Find, kill and clean up supply-chain malware that hides in your repositories.
+A dropper family is being committed directly into developer repos — buried in ordinary config
+files and disguised as font assets. It runs when you start the dev server, or the instant your
+editor opens the folder. **No `npm install` required.** One sample sat in a repository for five
+months before anyone noticed.
 
-Built while cleaning up a live infection: a dropper committed into four
-repositories across four GitHub organisations, which re-infected a freshly
-reinstalled machine on the next `git clone`.
+snare watches your machine for the loader and kills it, scans every repository you can reach,
+removes the payload (including from history), and helps you warn your collaborators.
 
+**[Read the field guide →](https://avioflagos.github.io/snare/)** — how it works, how to check
+your machine by hand, install instructions for every platform.
+
+```bash
+git clone https://github.com/AviOfLagos/snare ~/snare
+cd ~/snare && ./install.sh
+gh auth login          # your own account — snare ships no token
+snare doctor
+```
+
+macOS · Linux · Windows (Git Bash) · WSL — MIT licensed, free, no telemetry.
+
+---
 ## What it catches
 
 **Two execution routes, neither of which needs `npm install`:**
