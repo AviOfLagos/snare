@@ -31,7 +31,9 @@ cmd_selftest(){
   local keep=0
   [ "${1:-}" = "--keep" ] && keep=1
 
-  local T; T="$(mktemp -d -t snareselftest)"
+  # GNU mktemp requires the XXXXXX template; BSD/macOS does not.
+  local T; T="$(mktemp -d "${TMPDIR:-/tmp}/snareselftest.XXXXXX")" \
+    || { red "  cannot create a temp directory"; return 1; }
   hdr "snare selftest"
   echo "  scratch: $T"
 

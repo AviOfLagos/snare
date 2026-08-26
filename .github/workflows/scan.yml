@@ -1,0 +1,93 @@
+# Reusable snare scan. Other repositories call this in three lines:
+#
+#   jobs:
+#     snare:
+#       uses: AviOfLagos/snare/.github/workflows/scan.yml@main
+#
+# Make it a required status check in branch protection and a pull request
+# cannot be merged until it passes.
+name: snare scan
+
+on:
+  workflow_call:
+    inputs:
+      full-history:
+        description: "Scan every commit, not just the checked-out tip"
+        type: boolean
+        default: false
+      snare-ref:
+        description: "Which snare revision to scan with"
+        type: string
+        default: main
+      fail-on-findings:
+        description: "Fail the job when something is found"
+        type: boolean
+        default: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository being scanned
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ inputs.full-history && 0 || 1 }}
+
+      - name: Check out snare
+        uses: actions/checkout@v4
+        with:
+          repository: AviOfLagos/snare
+          ref: ${{ inputs.snare-ref }}
+          path: .snare-tool-checkout
+
+      # actions/checkout can only write inside the workspace, but a scanner
+      # sitting inside the repo it is scanning gets scanned too — and snare's
+      # own docs quote every IOC verbatim. Move it out before scanning.
+      - name: Move the scanner out of the scanned tree
+        run: |
+          mv .snare-tool-checkout "$RUNNER_TEMP/snare"
+          chmod +x "$RUNNER_TEMP/snare/bin/snare"
+
+      # A scanner whose detection is broken must never report a green tick.
+      # Four false-clean defects shipped exactly that way, so this gate runs
+      # before the scan and fails the job if detection is not working.
+      - name: Verify the scanner itself works
+        run: |
+          "$RUNNER_TEMP/snare/bin/snare" selftest
+
+      - name: Scan this repository
+        id: scan
+        run: |
+          set +e
+          "$RUNNER_TEMP/snare/bin/snare" scan repo . | tee /tmp/snare-scan.txt
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          n=$(grep -c '\[!\]' /tmp/snare-scan.txt || true)
+          echo "findings=$n" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        run: |
+          n="${{ steps.scan.outputs.findings }}"
+          {
+            echo "## snare scan"
+            echo
+            if [ "${n:-0}" -eq 0 ]; then
+              echo "No findings. :white_check_mark:"
+            else
+              echo "**${n} finding(s).** :rotating_light:"
+              echo
+              echo '```'
+              grep '\[!\]' /tmp/snare-scan.txt | head -40
+              echo '```'
+              echo
+              echo "A payload can hide behind a long run of spaces on one line, so it"
+              echo "looks normal in a diff. Read the flagged lines in full before merging."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on findings
+        if: ${{ inputs.fail-on-findings && steps.scan.outputs.findings != '0' }}
+        run: |
+          echo "::error::snare found ${{ steps.scan.outputs.findings }} issue(s) — refusing to pass."
+          exit 1
