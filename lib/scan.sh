@@ -9,7 +9,10 @@ _note(){ ylw "  [~] $*"; }
 cmd_scan_repo(){
   local repo="${1:-$PWD}" pattern out art ob
   [ -d "$repo" ] || die "no such directory: $repo"
-  FF="$(mktemp -t snarescan)"; trap 'rm -f "$FF"' RETURN
+  # GNU mktemp requires the XXXXXX template; BSD/macOS does not. Without it
+  # this returns empty on Linux and every later write silently fails.
+  FF="$(mktemp "${TMPDIR:-/tmp}/snarescan.XXXXXX")" || die "cannot create a temp file"
+  trap 'rm -f "$FF"' RETURN
   pattern="$(ioc_pattern)"
   ( cd "$repo" || exit 1
     echo "Scanning: $(pwd)"
