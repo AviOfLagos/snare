@@ -1,4 +1,6 @@
-# snare's own CI: dogfood the reusable workflow on every change.
+# snare's own CI. Deliberately does NOT call the reusable workflow: that one
+# pulls snare from @main, which would test the published version rather than
+# the change under review. A PR must be validated by its own code.
 name: CI
 
 on:
@@ -7,20 +9,39 @@ on:
   pull_request:
 
 jobs:
-  selftest:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: shellcheck-ish syntax check
+
+      - name: Every script parses
         run: |
           for f in bin/snare lib/*.sh; do bash -n "$f" || exit 1; done
           echo "all scripts parse"
-      - name: selftest
+
+      - name: Detection works (selftest)
         run: |
           chmod +x bin/snare
           ./bin/snare selftest
 
-  scan-self:
+      # Scan snare with the code from this PR, from outside the tree so the
+      # scanner is not scanning itself.
+      - name: Scan this checkout
+        run: |
+          cp -r . "$RUNNER_TEMP/snare-tool"
+          chmod +x "$RUNNER_TEMP/snare-tool/bin/snare"
+          set +e
+          "$RUNNER_TEMP/snare-tool/bin/snare" scan repo . | tee /tmp/scan.txt
+          set -e
+          n=$(grep -c '\[!\]' /tmp/scan.txt || true)
+          if [ "${n:-0}" -ne 0 ]; then
+            echo "::error::snare reported $n finding(s) against its own tree"
+            exit 1
+          fi
+          echo "clean"
+
+  # Prove the reusable workflow other people depend on still works end to end.
+  reusable:
     uses: ./.github/workflows/scan.yml
     with:
-      full-history: false
+      snare-ref: ${{ github.head_ref || github.ref_name }}
