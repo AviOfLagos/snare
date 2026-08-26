@@ -61,6 +61,19 @@ _hook_run(){
     bad=1
   fi
 
+  # 5. the machine itself. A clean repo pushed from an infected machine is how
+  #    this spreads: the loader injects into the commit on its way out. Refuse
+  #    to push at all while something is live, whatever the repo looks like.
+  if ! guard_scan_once >/dev/null 2>&1; then
+    echo
+    red "  [blocked] THIS MACHINE has a live detection."
+    red "  A clean repo pushed from an infected machine can still carry the"
+    red "  payload — the loader injects on the way out."
+    dim "  see:  $SNARE_LOGS/guard.log"
+    dim "  then: snare doctor    and    snare guard scan"
+    bad=1
+  fi
+
   if [ "$bad" = 1 ]; then
     echo
     red "  snare blocked this $mode."
