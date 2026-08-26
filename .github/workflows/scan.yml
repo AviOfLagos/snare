@@ -40,19 +40,26 @@ jobs:
           ref: ${{ inputs.snare-ref }}
           path: .snare-tool-checkout
 
+      # actions/checkout can only write inside the workspace, but a scanner
+      # sitting inside the repo it is scanning gets scanned too — and snare's
+      # own docs quote every IOC verbatim. Move it out before scanning.
+      - name: Move the scanner out of the scanned tree
+        run: |
+          mv .snare-tool-checkout "$RUNNER_TEMP/snare"
+          chmod +x "$RUNNER_TEMP/snare/bin/snare"
+
       # A scanner whose detection is broken must never report a green tick.
       # Four false-clean defects shipped exactly that way, so this gate runs
       # before the scan and fails the job if detection is not working.
       - name: Verify the scanner itself works
         run: |
-          chmod +x .snare-tool-checkout/bin/snare
-          .snare-tool-checkout/bin/snare selftest
+          "$RUNNER_TEMP/snare/bin/snare" selftest
 
       - name: Scan this repository
         id: scan
         run: |
           set +e
-          .snare-tool-checkout/bin/snare scan repo . | tee /tmp/snare-scan.txt
+          "$RUNNER_TEMP/snare/bin/snare" scan repo . | tee /tmp/snare-scan.txt
           echo "exit=$?" >> "$GITHUB_OUTPUT"
           set -e
           n=$(grep -c '\[!\]' /tmp/snare-scan.txt || true)

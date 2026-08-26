@@ -19,7 +19,10 @@ cmd_scan_repo(){
     local SELF=0 EXCL=()
     if [ -f .snare-tool ]; then
       SELF=1
-      EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude-dir=docs --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
+      # promo/ and docs/ quote every IOC verbatim; they are write-ups about the
+      # malware, not the malware. Without them snare cannot pass its own CI.
+      EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude-dir=docs --exclude-dir=promo
+            --exclude-dir=.github --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
       dim "  (snare's own source tree — its detection patterns are excluded)"
     fi
 
@@ -92,7 +95,7 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     # real samples, so the structural test is primary.
     lng="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
         -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
-        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/' || cat; } \
+        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/\|/promo/' || cat; } \
         | xargs awk '/[^ \t][ \t]{50,}[^ \t]/ {print "HIT "FILENAME" line "FNR" ("length" chars)"; nextfile}
                      length > 1500 {print "LONG "FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -20)"
     local anyhit=0
