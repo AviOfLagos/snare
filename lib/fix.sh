@@ -1,6 +1,64 @@
 # shellcheck shell=bash
 # fix.sh — remove the malware from a GitHub repo. Dry run unless told otherwise.
 
+# snare fix --all — remediate every repo the last `scan github` flagged.
+# Dry-run by default; --push/--purge-history require an interactive confirm,
+# because this can force-push to repositories other people depend on.
+cmd_fix_all(){
+  local flagged="$SNARE_LOGS/flagged.txt"
+  [ -s "$flagged" ] || die "no flagged repos — run: snare scan github"
+
+  local n; n="$(grep -c . "$flagged" | tr -d ' ')"
+  hdr "snare fix --all"
+  echo "  $n repo(s) flagged by the last scan:"
+  sed 's/^/      /' "$flagged"
+
+  local push=0 purge=0 yes=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --push) push=1 ;;
+      --purge-history) purge=1 ;;
+      --yes) yes=1 ;;
+    esac; shift
+  done
+
+  if [ "$push" = 0 ] && [ "$purge" = 0 ]; then
+    echo; ylw "  dry run — nothing will be changed or pushed."
+    dim "  to actually remediate:  snare fix --all --push"
+    dim "  to erase from history:  snare fix --all --purge-history --push"
+  else
+    echo
+    red "  This will modify ${n} repository(ies) on GitHub."
+    [ "$purge" = 1 ] && red "  --purge-history REWRITES HISTORY: every SHA changes and every"
+    [ "$purge" = 1 ] && red "  collaborator must re-clone. Forks and PR refs keep the old objects."
+    if [ "$yes" = 0 ]; then
+      if [ ! -t 0 ]; then
+        die "refusing to run non-interactively without --yes"
+      fi
+      printf '%s' "  Type the number of repos to confirm ($n): "
+      local ans; read -r ans
+      [ "$ans" = "$n" ] || die "confirmation did not match — aborted"
+    fi
+  fi
+
+  local r ok=0 bad=0
+  while IFS= read -r r; do
+    [ -z "$r" ] && continue
+    hdr "=== $r ==="
+    if ( cmd_fix "$r" ${push:+$([ "$push" = 1 ] && echo --push)} \
+                    ${purge:+$([ "$purge" = 1 ] && echo --purge-history)} ); then
+      ok=$((ok+1))
+    else
+      bad=$((bad+1)); red "  FAILED: $r"
+    fi
+  done < "$flagged"
+
+  hdr "RESULT"
+  echo "  succeeded: $ok    failed: $bad"
+  [ "$bad" -gt 0 ] && return 1
+  return 0
+}
+
 cmd_fix(){
   require_gh
   local repo="${1:-}"; shift || true

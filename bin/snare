@@ -46,6 +46,7 @@ ${C_BLD}MAINTAIN${C_OFF}
 
 ${C_BLD}FIX${C_OFF}
   snare fix <owner/repo>                      dry run (always backs up first)
+  snare fix --all                             every repo the last scan flagged
   snare fix <owner/repo> --push               clean branch tips and push
   snare fix <owner/repo> --purge-history --push   erase from all history
 
@@ -99,7 +100,8 @@ main(){
         "")     cmd_scan_repo "$PWD" ;;
         *)      cmd_scan_repo "$what" ;;
       esac ;;
-    fix)    cmd_fix "$@" ;;
+    fix)
+      if [ "${1:-}" = "--all" ]; then shift; cmd_fix_all "$@"; else cmd_fix "$@"; fi ;;
     notify) cmd_notify "$@" ;;
     doctor) cmd_doctor ;;
     update) cmd_update "$@" ;;
