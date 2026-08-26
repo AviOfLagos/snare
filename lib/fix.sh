@@ -39,6 +39,10 @@ cmd_fix(){
       && { red "  [$br] .vscode/tasks.json runOn:folderOpen"; found=1; }
     local m; m="$(git grep -InE "$pattern" "$ref" -- 2>/dev/null | head -3)"
     [ -n "$m" ] && { red "  [$br] IOC content:"; echo "$m" | cut -c1-140 | sed 's/^/      /'; found=1; }
+    # Whitespace-hidden payload in a build config matches no IOC string.
+    local w; w="$(git grep -lE '[^[:space:]][[:space:]]{50,}[^[:space:]]' "$ref" -- \
+                  '*.config.js' '*.config.mjs' '*.config.cjs' '*.config.ts' 2>/dev/null | head -3)"
+    [ -n "$w" ] && { red "  [$br] hidden payload past whitespace:"; echo "$w" | sed 's/^/      /'; found=1; }
   done
   while IFS= read -r pat; do
     [ -z "$pat" ] && continue
@@ -61,15 +65,34 @@ cmd_fix(){
     local cb="$SNARE_WORK/.strip.py"
     cat > "$cb" <<'PY'
 import re
-MARK=[b'A8-3379-6',b'0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a',
-      b'0xa322e5f3d311d3080e6f0121063e9adc2490ef1a',b'eth.blockscout.com']
-if any(m in blob.data for m in MARK):
-    m=re.search(rb'[ \t]{50,}',blob.data)          # the whitespace the payload hides behind
-    if m: blob.data=blob.data[:m.start()].rstrip()+b'\n'
+# Do NOT gate on a fixed marker list: variants are obfuscated and contain none
+# of them. Gate on the structural signature instead — a line of real code, a
+# long whitespace run, then code that looks obfuscated. Strip line-wise so a
+# payload mid-file cannot truncate the rest of the file.
+LINE = re.compile(rb'^(.*?\S)[ \t]{50,}(\S.*)$')
+OBF  = re.compile(rb'_0x[0-9a-f]{4,}|\\u00[0-9a-fA-F]{2}|eval\(|atob\(|new URL\(|\}\)\(\);?\s*$')
+MARK = [b'A8-', b'0xa322e5f3d311d3080e6f0121063e9adc2490ef1a', b'eth.blockscout.com']
+low  = blob.data.lower()
+out, changed = [], False
+for ln in blob.data.split(b'\n'):
+    m = LINE.match(ln)
+    if m and (OBF.search(m.group(2)) or any(k in m.group(2).lower() for k in MARK)):
+        ln = m.group(1); changed = True
+    out.append(ln)
+if changed:
+    blob.data = b'\n'.join(out)
 PY
     git filter-repo --force --blob-callback "$(cat "$cb")" 2>&1 | tail -4
-    local left; left="$(git log --all --oneline -S 'A8-3379-6' --pickaxe-regex 2>/dev/null | wc -l | tr -d ' ')"
-    echo "  commits still carrying the marker: $left"
+    # Verify by re-reading every blob, not by grepping for one marker string.
+    local left=0 o
+    for o in $(git rev-list --objects --all 2>/dev/null | awk '{print $1}' \
+               | git cat-file --batch-check='%(objectname) %(objecttype) %(objectsize)' 2>/dev/null \
+               | awk '$2=="blob" && $3<400000 {print $1}'); do
+      git cat-file blob "$o" 2>/dev/null | grep -qE '[^[:space:]][ ]{50,}[^[:space:]]' || continue
+      git cat-file blob "$o" 2>/dev/null \
+        | grep -qE '_0x[0-9a-f]{4,}|\\u00[0-9a-fA-F]{2}|new URL\(|atob\(' && left=$((left+1))
+    done
+    echo "  blobs still carrying a hidden payload: $left"
     [ "$left" != "0" ] && die "purge incomplete — not pushing"
     git remote add origin "https://github.com/$repo.git" 2>/dev/null || \
       git remote set-url origin "https://github.com/$repo.git"
@@ -97,6 +120,29 @@ PY
       [ -z "$f" ] && continue
       git rm -q -f "$f" 2>/dev/null && { changed=1; echo "  [$br] removed $f"; }
     done < <(grep -rlE "$pattern" . --exclude-dir=.git 2>/dev/null | head -10)
+
+    # A build config carrying a hidden payload is a file the project NEEDS.
+    # Strip the payload from the line; never delete the file.
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      python3 - "$f" <<'STRIP'
+import re,sys
+p=sys.argv[1]; d=open(p,'rb').read()
+LINE=re.compile(rb'^(.*?\S)[ \t]{50,}(\S.*)$')
+OBF=re.compile(rb'_0x[0-9a-f]{4,}|\\u00[0-9a-fA-F]{2}|eval\(|atob\(|new URL\(|\}\)\(\);?\s*$')
+out=[];ch=False
+for ln in d.split(b'\n'):
+    m=LINE.match(ln)
+    if m and OBF.search(m.group(2)): ln=m.group(1); ch=True
+    out.append(ln)
+if ch: open(p,'wb').write(b'\n'.join(out)); print("stripped")
+STRIP
+      if [ -n "$(git diff --name-only -- "$f")" ]; then
+        git add "$f"; changed=1; echo "  [$br] stripped hidden payload from $f (file kept)"
+      fi
+    done < <(grep -rlE '[^[:space:]][[:space:]]{50,}[^[:space:]]' . --exclude-dir=.git \
+             --include='*.config.js' --include='*.config.mjs' --include='*.config.cjs' \
+             --include='*.config.ts' 2>/dev/null | head -10)
     [ "$changed" = 1 ] && {
       git commit -q -m "security: remove supply-chain malware dropper
 

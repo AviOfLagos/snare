@@ -24,7 +24,7 @@ cmd_scan_repo(){
     fi
 
     hdr "1. Working tree"
-    out="$(grep -rInE "$pattern" . --exclude-dir=.git "${EXCL[@]}" 2>/dev/null | head -40)"
+    out="$(grep -rInE "$pattern" . --exclude-dir=.git ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null | head -40)"
     if [ -n "$out" ]; then while IFS= read -r l; do _hit "$(echo "$l" | cut -c1-160)"; done <<< "$out"
     else grn "  clean"; fi
 
@@ -70,8 +70,10 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     local bad=0
     while IFS= read -r f; do
       [ -z "$f" ] && continue
-      case "$(head -c 4 "$f" 2>/dev/null)" in
-        wOF2|wOFF|$'\x00\x01\x00\x00'|OTTO|"true") ;;               # genuine font magic
+      # Compare as hex: bash cannot hold NUL, so the TrueType magic
+      # 00 01 00 00 can never match as a literal string.
+      case "$(head -c 4 "$f" 2>/dev/null | xxd -p 2>/dev/null)" in
+        774f4632|774f4646|00010000|4f54544f|74727565) ;;              # wOF2 wOFF ttf OTTO true
         *) _hit "$f is not a real font (no wOF2/OTTO magic) — likely a payload"; bad=1 ;;
       esac
     done < <(find . \( -name '*.woff2' -o -name '*.woff' -o -name '*.ttf' -o -name '*.otf' \) \
@@ -82,12 +84,17 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
          -not -path "*/node_modules/*" 2>/dev/null | head -10)"
     [ -n "$art" ] && while IFS= read -r f; do _hit "known worm artifact: $f"; done <<< "$art"
 
-    hdr "4. Hidden-payload heuristic (very long lines)"
+    hdr "4. Hidden-payload heuristic (code hidden past whitespace)"
     local lng
+    # Two signals: the structural one (code, a long whitespace run, then more
+    # code) catches a payload of ANY length; the raw-length one catches a
+    # minified blob that hides without a whitespace run. Length alone missed
+    # real samples, so the structural test is primary.
     lng="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
         -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
         | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/' || cat; } \
-        | xargs awk 'length > 1500 {print FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -10)"
+        | xargs awk '/[^ \t][ \t]{50,}[^ \t]/ {print FILENAME" line "FNR" ("length" chars, code hidden past whitespace)"; nextfile}
+                     length > 1500 {print FILENAME" line "FNR" ("length" chars, very long line)"; nextfile}' 2>/dev/null | head -10)"
     if [ -n "$lng" ]; then while IFS= read -r l; do _hit "$l — payload may be hidden past a run of whitespace"; done <<< "$lng"
     else grn "  no suspiciously long lines"; fi
 
@@ -183,8 +190,8 @@ _scan_ref(){ # $1=repo $2=ref $3=pattern -> prints findings
   # fake font: fetch only small font files and check magic bytes
   while IFS= read -r f; do
     [ -z "$f" ] && continue
-    local head4; head4="$(gh api "repos/$R/contents/$f?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | head -c 4)"
-    case "$head4" in wOF2|wOFF|OTTO|"true"|"") ;; *) hits="${hits}    $f is not a real font (magic='$head4') @$REF
+    local head4; head4="$(gh api "repos/$R/contents/$f?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | head -c 4 | xxd -p 2>/dev/null)"
+    case "$head4" in 774f4632|774f4646|00010000|4f54544f|74727565|"") ;; *) hits="${hits}    $f is not a real font (magic=0x$head4) @$REF
 ";; esac
   done < <(echo "$tree" | grep -E '\.(woff2|woff)$' | head -3)
 
@@ -208,5 +215,21 @@ $hooks
     echo "$body" | grep -qE "$pattern" && hits="${hits}    $f matches IOC @$REF
 "
   done < <(echo "$tree" | grep -E '(^|/)package\.json$' | grep -v node_modules | head -3)
+  # Build configs: the second documented execution route (next dev / next build).
+  # The payload is obfuscated and matches no IOC string, so it is only visible
+  # via the hidden-payload heuristic — a run of whitespace followed by code.
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    body="$(gh api "repos/$R/contents/$f?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)"
+    [ -z "$body" ] && continue
+    if echo "$body" | grep -qE '[^[:space:]][[:space:]]{50,}[^[:space:]]'; then
+      hits="${hits}    $f hides code past a run of whitespace @$REF
+"
+    fi
+    echo "$body" | grep -qE "$pattern" && hits="${hits}    $f matches IOC @$REF
+"
+  done < <(echo "$tree" | grep -E '(^|/)(postcss|next|tailwind|vite|svelte|nuxt|astro|rollup|webpack|babel)\.config\.[cm]?[jt]s$' \
+           | grep -v node_modules | head -8)
+
   printf '%s' "$hits"
 }
