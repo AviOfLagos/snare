@@ -93,7 +93,10 @@ cmd_doctor(){
   hdr "Persistence spots"
   local n
   for d in "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons; do
-    n="$(ls -1 "$d" 2>/dev/null | grep -v '^com.snare' | wc -l | tr -d ' ')"
+    # find, not ls|grep: a filename containing a newline would break the count,
+    # and this counts persistence entries — the exact place to expect a
+    # deliberately awkward filename.
+    n="$(find "$d" -maxdepth 1 -mindepth 1 ! -name 'com.snare*' 2>/dev/null | wc -l | tr -d ' ')"
     [ "${n:-0}" -gt 0 ] && ylw "  $d: $n entry(ies) — review" || grn "  $d: empty"
   done
   crontab -l >/dev/null 2>&1 && ylw "  crontab: present — review" || grn "  crontab: none"
