@@ -22,6 +22,8 @@ _dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
 . "$_dir/lib/update.sh"
 . "$_dir/lib/selftest.sh"
 . "$_dir/lib/report.sh"
+. "$_dir/lib/baseline.sh"
+. "$_dir/lib/hook.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
@@ -46,6 +48,13 @@ ${C_BLD}WATCH${C_OFF}
   snare report --json           machine-readable, for CI
   snare schedule install --daily     run it on a timer, notify on findings (opt-in)
   snare schedule status | uninstall
+  snare baseline set            accept current findings; later scans show only what is new
+  snare baseline status | clear
+
+${C_BLD}PREVENT${C_OFF}
+  snare hook install            block a push that carries a hidden payload
+  snare hook install --with-pre-commit
+  snare hook status | uninstall
 
 ${C_BLD}MAINTAIN${C_OFF}
   snare update                  pull the latest version
@@ -102,7 +111,13 @@ main(){
     scan)
       local what="${1:-}"; shift || true
       case "$what" in
-        repo)   cmd_scan_repo "${1:-$PWD}" ;;
+        repo)
+          local _t="${1:-$PWD}" _new=0
+          [ "$_t" = "--new" ] && { _new=1; _t="${2:-$PWD}"; }
+          [ "${2:-}" = "--new" ] && _new=1
+          if [ "$_new" = 1 ]; then
+            snare_baseline_filter "$_t" "$(cmd_scan_repo "$_t" 2>&1)"
+          else cmd_scan_repo "$_t"; fi ;;
         github) cmd_scan_github "$@" ;;
         "")     cmd_scan_repo "$PWD" ;;
         *)      cmd_scan_repo "$what" ;;
@@ -114,6 +129,8 @@ main(){
     update) cmd_update "$@" ;;
     report) cmd_report "$@" ;;
     schedule) cmd_schedule "$@" ;;
+    baseline) cmd_baseline "$@" ;;
+    hook)   cmd_hook "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v) echo "snare $SNARE_VERSION"; snare_update_hint ;;
     help|--help|-h) usage ;;
