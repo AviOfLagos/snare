@@ -1,0 +1,26 @@
+# snare's own CI: dogfood the reusable workflow on every change.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck-ish syntax check
+        run: |
+          for f in bin/snare lib/*.sh; do bash -n "$f" || exit 1; done
+          echo "all scripts parse"
+      - name: selftest
+        run: |
+          chmod +x bin/snare
+          ./bin/snare selftest
+
+  scan-self:
+    uses: ./.github/workflows/scan.yml
+    with:
+      full-history: false

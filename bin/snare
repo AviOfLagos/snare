@@ -24,6 +24,7 @@ _dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
 . "$_dir/lib/report.sh"
 . "$_dir/lib/baseline.sh"
 . "$_dir/lib/hook.sh"
+. "$_dir/lib/ci.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
@@ -55,6 +56,8 @@ ${C_BLD}PREVENT${C_OFF}
   snare hook install            block a push that carries a hidden payload
   snare hook install --with-pre-commit
   snare hook status | uninstall
+  snare ci install              block merges until a repo passes the scan (GitHub Actions)
+  snare ci status | print
 
 ${C_BLD}MAINTAIN${C_OFF}
   snare update                  pull the latest version
@@ -131,6 +134,7 @@ main(){
     schedule) cmd_schedule "$@" ;;
     baseline) cmd_baseline "$@" ;;
     hook)   cmd_hook "$@" ;;
+    ci)     cmd_ci "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v) echo "snare $SNARE_VERSION"; snare_update_hint ;;
     help|--help|-h) usage ;;
