@@ -19,6 +19,8 @@ _dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
 . "$_dir/lib/scan.sh"
 . "$_dir/lib/fix.sh"
 . "$_dir/lib/notify.sh"
+. "$_dir/lib/update.sh"
+. "$_dir/lib/selftest.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
@@ -36,6 +38,11 @@ ${C_BLD}FIND${C_OFF}
   snare scan github --mine      only repos you own
   snare scan github --all-branches
   snare doctor                  check this machine + your GitHub account
+  snare selftest                prove detection works (known-bad + known-good)
+
+${C_BLD}MAINTAIN${C_OFF}
+  snare update                  pull the latest version
+  snare update --check          is a newer version available?
 
 ${C_BLD}FIX${C_OFF}
   snare fix <owner/repo>                      dry run (always backs up first)
@@ -95,7 +102,9 @@ main(){
     fix)    cmd_fix "$@" ;;
     notify) cmd_notify "$@" ;;
     doctor) cmd_doctor ;;
-    version|--version|-v) echo "snare $SNARE_VERSION" ;;
+    update) cmd_update "$@" ;;
+    selftest) cmd_selftest "$@" ;;
+    version|--version|-v) echo "snare $SNARE_VERSION"; snare_update_hint ;;
     help|--help|-h) usage ;;
     *) red "unknown command: $c"; echo; usage; exit 2 ;;
   esac

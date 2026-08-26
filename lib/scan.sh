@@ -93,10 +93,20 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     lng="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
         -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
         | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/' || cat; } \
-        | xargs awk '/[^ \t][ \t]{50,}[^ \t]/ {print FILENAME" line "FNR" ("length" chars, code hidden past whitespace)"; nextfile}
-                     length > 1500 {print FILENAME" line "FNR" ("length" chars, very long line)"; nextfile}' 2>/dev/null | head -10)"
-    if [ -n "$lng" ]; then while IFS= read -r l; do _hit "$l — payload may be hidden past a run of whitespace"; done <<< "$lng"
-    else grn "  no suspiciously long lines"; fi
+        | xargs awk '/[^ \t][ \t]{50,}[^ \t]/ {print "HIT "FILENAME" line "FNR" ("length" chars)"; nextfile}
+                     length > 1500 {print "LONG "FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -20)"
+    local anyhit=0
+    if [ -n "$lng" ]; then
+      while IFS= read -r l; do
+        case "$l" in
+          HIT\ *)  _hit "${l#HIT } — code hidden past a run of whitespace"; anyhit=1 ;;
+          # A long line on its own is weak evidence: minified bundles are
+          # legitimately long. Report it, but do not count it as a finding.
+          LONG\ *) _note "${l#LONG } — very long line (minified code looks like this too)" ;;
+        esac
+      done <<< "$lng"
+    fi
+    [ "$anyhit" = 0 ] && grn "  no code hidden past whitespace"
 
     if [ "$SELF" = 1 ]; then
       hdr "5. Git history"
