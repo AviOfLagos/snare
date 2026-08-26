@@ -33,7 +33,8 @@ guard_kill_tree(){
 guard_handle(){ # $1=pid $2=reason $3=cmd
   local pid="$1" reason="$2" cmd="$3" ev
   ev="$(guard_capture "$pid" "$reason")"
-  local msg="[$(date '+%F %T')] DETECTED pid=$pid reason=$reason"
+  local msg
+  msg="[$(date '+%F %T')] DETECTED pid=$pid reason=$reason"
   echo "$msg" | tee -a "$SNARE_LOGS/guard.log"
   echo "  cmd: $(echo "$cmd" | cut -c1-200)" | tee -a "$SNARE_LOGS/guard.log"
   echo "  evidence: $ev" | tee -a "$SNARE_LOGS/guard.log"
@@ -56,7 +57,14 @@ guard_scan_once(){
     [ -z "$pid" ] || [ -z "$cmd" ] && continue
     [ "$pid" = "$$" ] && continue
     [ "$ppid" = "$$" ] && continue
-    case "$cmd" in *snare*|*/.snare/*) continue;; esac
+    # Skip snare itself — matched on the real install path, never on the bare
+    # word "snare". Matching the word anywhere in the command line let any
+    # process hide from the guard just by putting "snare" in its argv, e.g.
+    #   node /tmp/snare-helper.js
+    # snare is public, so that was trivially discoverable.
+    case "$cmd" in
+      *"$SNARE_ROOT/bin/snare"*) continue ;;
+    esac
     # A command line that merely MENTIONS an IOC (a shell running grep, an
     # editor, this tool) must never be killed. Only interpreters can execute
     # an inline payload, so restrict cmdline kills to those.

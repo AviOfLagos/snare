@@ -6,7 +6,7 @@
 #   snare notify <owner/repo> --issue --mail
 
 _notify_body(){ # $1=repo $2=issue-ref-or-empty
-  local repo="$1" ref="${2:-}"
+  local repo="$1"
   cat <<MD
 ## Malware was committed to this repository
 
@@ -81,7 +81,8 @@ cmd_notify(){
   local me; me="$(gh_user)"
 
   # Emails: public profile first, then commit metadata. noreply addresses cannot receive mail.
-  local contacts="$SNARE_LOGS/contacts-$(echo "$repo" | tr '/' '_').tsv"; : > "$contacts"
+  local contacts
+  contacts="$SNARE_LOGS/contacts-$(echo "$repo" | tr '/' '_').tsv"; : > "$contacts"
   local u e n
   for u in $logins; do
     [ "$u" = "$me" ] && continue
@@ -90,7 +91,8 @@ cmd_notify(){
     printf '%s\t%s\t%s\n' "$u" "${e:-}" "${n:-}" >> "$contacts"
   done
   # commit authors (real addresses only)
-  local src="$SNARE_WORK/$(echo "$repo" | tr '/' '_')"
+  local src
+  src="$SNARE_WORK/$(echo "$repo" | tr '/' '_')"
   if [ -d "$src/.git" ]; then
     git -C "$src" log --all --format='%ae%x09%an' 2>/dev/null | sort -u | \
       grep -v 'users\.noreply\.github\.com' | grep -v 'noreply@' | grep -v 'you@example' | \
@@ -118,7 +120,7 @@ cmd_notify(){
   if [ "$do_mail" = 1 ]; then
     hdr "Opening mail drafts (nothing is sent)"
     local sent=0
-    while IFS=$'\t' read -r who email name; do
+    while IFS=$'\t' read -r _who email name; do
       [ -z "$email" ] && continue
       local _url; _url="$(python3 - "$email" "$name" "$repo" <<'PY'
 import urllib.parse, sys

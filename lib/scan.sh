@@ -7,7 +7,7 @@ _note(){ ylw "  [~] $*"; }
 
 # ---------------------------------------------------------------- local repo
 cmd_scan_repo(){
-  local repo="${1:-$PWD}" pattern out art ob
+  local repo="${1:-$PWD}" pattern out art
   [ -d "$repo" ] || die "no such directory: $repo"
   # GNU mktemp requires the XXXXXX template; BSD/macOS does not. Without it
   # this returns empty on Linux and every later write silently fails.
@@ -126,7 +126,8 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
       done < <(ioc_list)
     fi
 
-    local n; n="$(wc -l < "$FF" | tr -d ' ')"
+    local n
+  n="$(wc -l < "$FF" | tr -d ' ')"
     hdr "RESULT"
     if [ "${n:-0}" -eq 0 ]; then grn "No IOC matches."; exit 0
     else red "$n finding(s). Do NOT run 'npm install' or open this repo in an editor until cleaned."; exit 1; fi
@@ -146,7 +147,8 @@ cmd_scan_github(){
     esac; shift
   done
   local flagged="$SNARE_LOGS/flagged.txt"; : > "$flagged"
-  local report="$SNARE_LOGS/scan-$(date '+%Y%m%dT%H%M%S').txt"
+  local report
+  report="$SNARE_LOGS/scan-$(date '+%Y%m%dT%H%M%S').txt"
   local pattern; pattern="$(ioc_pattern)"
   local repos
   case "$scope" in
