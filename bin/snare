@@ -21,6 +21,7 @@ _dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
 . "$_dir/lib/notify.sh"
 . "$_dir/lib/update.sh"
 . "$_dir/lib/selftest.sh"
+. "$_dir/lib/report.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
@@ -39,6 +40,12 @@ ${C_BLD}FIND${C_OFF}
   snare scan github --all-branches
   snare doctor                  check this machine + your GitHub account
   snare selftest                prove detection works (known-bad + known-good)
+
+${C_BLD}WATCH${C_OFF}
+  snare report                  scan, save a timestamped report, exit non-zero on findings
+  snare report --json           machine-readable, for CI
+  snare schedule install --daily     run it on a timer, notify on findings (opt-in)
+  snare schedule status | uninstall
 
 ${C_BLD}MAINTAIN${C_OFF}
   snare update                  pull the latest version
@@ -105,6 +112,8 @@ main(){
     notify) cmd_notify "$@" ;;
     doctor) cmd_doctor ;;
     update) cmd_update "$@" ;;
+    report) cmd_report "$@" ;;
+    schedule) cmd_schedule "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v) echo "snare $SNARE_VERSION"; snare_update_hint ;;
     help|--help|-h) usage ;;
