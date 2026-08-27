@@ -16,8 +16,27 @@ jobs:
 
       - name: Every script parses
         run: |
-          for f in bin/snare lib/*.sh; do bash -n "$f" || exit 1; done
+          for f in bin/snare lib/*.sh install.sh; do bash -n "$f" || exit 1; done
           echo "all scripts parse"
+
+      # A two-minute shellcheck pass found a guard evasion hole that eight
+      # rounds of manual review had missed. Keep it from coming back.
+      - name: shellcheck
+        run: |
+          sudo apt-get install -y shellcheck >/dev/null 2>&1 || sudo apt-get update -qq && sudo apt-get install -y shellcheck >/dev/null 2>&1
+          shellcheck --version
+          shellcheck -S warning bin/snare lib/*.sh install.sh
+
+      # The shield snippet lives inside a heredoc, so neither `bash -n` nor
+      # shellcheck ever parses it. A deleted if-body slipped through exactly
+      # that gap. Validate the generated output itself.
+      - name: Generated shield snippet is valid shell
+        run: |
+          chmod +x bin/snare
+          ./bin/snare shield print > /tmp/snippet.sh
+          bash -n /tmp/snippet.sh
+          shellcheck -S warning -s bash /tmp/snippet.sh
+          echo "snippet is valid"
 
       - name: Detection works (selftest)
         run: |
