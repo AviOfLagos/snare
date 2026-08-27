@@ -26,6 +26,7 @@ _dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
 . "$_dir/lib/hook.sh"
 . "$_dir/lib/ci.sh"
 . "$_dir/lib/shield.sh"
+. "$_dir/lib/rotate.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
@@ -43,6 +44,7 @@ ${C_BLD}FIND${C_OFF}
   snare scan github --mine      only repos you own
   snare scan github --all-branches
   snare doctor                  check this machine + your GitHub account
+  snare rotate                  what to revoke, and audit GitHub for persistence
   snare selftest                prove detection works (known-bad + known-good)
 
 ${C_BLD}WATCH${C_OFF}
@@ -142,6 +144,7 @@ main(){
     hook)   cmd_hook "$@" ;;
     ci)     cmd_ci "$@" ;;
     shield) cmd_shield "$@" ;;
+    rotate) cmd_rotate "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v) echo "snare $SNARE_VERSION"; snare_update_hint ;;
     help|--help|-h) usage ;;

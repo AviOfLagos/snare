@@ -72,6 +72,25 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     done
     [ -f .npmrc ] && { _note "repo-local .npmrc (can redirect the registry):"; sed 's/^/        /' .npmrc; }
 
+    # Actions workflow persistence. This family's documented persistence is a
+    # workflow that exfiltrates secrets on EVERY push, and it survives long
+    # after the dropper is removed. Filename matching is not enough — the file
+    # need not be called anything distinctive, so check content.
+    local wf
+    while IFS= read -r wf; do
+      [ -z "$wf" ] && continue
+      case "$wf" in *shai*|*hulud*) _hit "$wf — workflow filename matches a known worm artefact"; continue ;; esac
+      if grep -qE 'toJSON\([[:space:]]*secrets' "$wf" 2>/dev/null; then
+        _hit "$wf — dumps the entire secrets context (toJSON(secrets))"
+      elif grep -qE 'webhook\.site|pipedream\.net|requestbin' "$wf" 2>/dev/null; then
+        _hit "$wf — posts to a known exfiltration endpoint"
+      elif grep -qE '\$\{\{[[:space:]]*secrets\.' "$wf" 2>/dev/null \
+           && grep -qE 'curl|wget|nc |Invoke-WebRequest' "$wf" 2>/dev/null; then
+        _note "$wf — references secrets near an outbound request; read it"
+      fi
+    done < <(find . -path '*/.github/workflows/*' \( -name '*.yml' -o -name '*.yaml' \) \
+             -not -path '*/node_modules/*' 2>/dev/null | head -30)
+
     hdr "3. Fake assets (payload disguised as a binary file)"
     local bad=0
     while IFS= read -r f; do
