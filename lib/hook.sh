@@ -23,6 +23,12 @@ _hook_run(){
   local pattern; pattern="$(ioc_pattern)"
   local bad=0 f
 
+  # snare's own source legitimately contains every IOC string — it is the
+  # detector. Without this the hook blocks every push from snare's own repo,
+  # which is exactly what happened the first time it was installed here.
+  local SELF=0
+  [ -f .snare-tool ] && SELF=1
+
   # Files under consideration: staged for commit, else tracked files.
   local list
   if [ "$mode" = "pre-commit" ]; then
@@ -34,6 +40,11 @@ _hook_run(){
   while IFS= read -r f; do
     [ -z "$f" ] || [ ! -f "$f" ] && continue
     case "$f" in */node_modules/*|node_modules/*) continue ;; esac
+    if [ "$SELF" = 1 ]; then
+      case "$f" in
+        lib/*|bin/*|docs/*|promo/*|iocs.txt|README.md|CHANGELOG.md|.github/*) continue ;;
+      esac
+    fi
 
     # 1. code hidden past a run of whitespace — the signature that matters
     if grep -qE '[^[:space:]][[:space:]]{50,}[^[:space:]]' "$f" 2>/dev/null; then
