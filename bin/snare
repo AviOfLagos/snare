@@ -13,6 +13,33 @@ while [ -L "$_src" ]; do
   case "$_src" in /*) ;; *) _src="$_ldir/$_src" ;; esac
 done
 _dir="$(cd -P "$(dirname "$_src")/.." && pwd)"
+
+# Windows Git Bash cannot create real symlinks, so install.sh may have copied
+# this script rather than linking it. A copy has no link to resolve, so $_dir
+# lands next to the copy (e.g. ~/.local) where lib/ does not exist. Rather than
+# emitting a dozen "No such file" lines and then "command not found", say what
+# is wrong and how to fix it. SNARE_ROOT overrides for unusual layouts.
+if [ ! -f "$_dir/lib/common.sh" ]; then
+  if [ -n "${SNARE_ROOT:-}" ] && [ -f "$SNARE_ROOT/lib/common.sh" ]; then
+    _dir="$SNARE_ROOT"
+  else
+    {
+      echo "snare: cannot find its library files."
+      echo "  looked in: $_dir/lib"
+      echo
+      echo "  This usually means snare was copied instead of linked — Windows"
+      echo "  Git Bash cannot always create symlinks."
+      echo
+      echo "  Fix it by re-running the installer from your snare checkout:"
+      echo "      cd /path/to/snare && ./install.sh"
+      echo
+      echo "  Or point snare at the checkout directly:"
+      echo "      export SNARE_ROOT=/path/to/snare"
+    } >&2
+    exit 1
+  fi
+fi
+
 # shellcheck source=/dev/null
 . "$_dir/lib/common.sh"
 . "$_dir/lib/guard.sh"

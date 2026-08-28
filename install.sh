@@ -56,10 +56,32 @@ if [ "$miss" = 1 ]; then
 fi
 
 mkdir -p "$BIN"
-ln -sf "$SRC/bin/snare" "$BIN/snare" 2>/dev/null || cp "$SRC/bin/snare" "$BIN/snare"
+# Prefer a symlink. Where symlinks are unavailable — Windows Git Bash, most
+# often — write a launcher stub that execs the real script in place. Copying
+# the script itself does NOT work: it resolves its lib/ directory relative to
+# its own location, so a copy in ~/.local/bin looks for ~/.local/lib and fails
+# with a dozen "No such file or directory" lines.
+_linked=""
+if ln -sf "$SRC/bin/snare" "$BIN/snare" 2>/dev/null && [ -L "$BIN/snare" ]; then
+  _linked="linked"
+else
+  rm -f "$BIN/snare" 2>/dev/null
+  cat > "$BIN/snare" <<LAUNCHER
+#!/usr/bin/env bash
+# snare launcher. This platform does not support symlinks, so this stub execs
+# the real script from the checkout. Regenerate it by re-running install.sh.
+exec "$SRC/bin/snare" "\$@"
+LAUNCHER
+  _linked="launcher"
+fi
 chmod +x "$SRC/bin/snare" "$BIN/snare" 2>/dev/null
 echo
-echo "  linked: $BIN/snare"
+if [ "$_linked" = linked ]; then
+  echo "  linked: $BIN/snare -> $SRC/bin/snare"
+else
+  echo "  launcher: $BIN/snare -> $SRC/bin/snare"
+  echo "            (symlinks unavailable on this platform; a stub was written instead)"
+fi
 
 case ":$PATH:" in
   *":$BIN:"*) ;;
