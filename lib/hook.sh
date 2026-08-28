@@ -5,6 +5,18 @@
 # so the payload is pushed before anyone scans a repo. Cleaning repositories
 # afterwards treats the symptom; refusing the push treats the cause.
 
+# Is this file a snare hook? Matches the current marker and hooks written by
+# versions before the marker existed, whose invocation line looked like
+#   "/path/to/snare" hook run pre-push
+# Without the legacy arm, an upgrade left old hooks invisible: status reported
+# none installed, uninstall could not remove them, and install chained them
+# into .pre-snare instead of replacing them.
+_is_snare_hook(){
+  grep -q 'snare-hook-v1' "$1" 2>/dev/null && return 0
+  grep -qE '(^|[^[:alnum:]])snare"?[[:space:]]+hook[[:space:]]+run' "$1" 2>/dev/null && return 0
+  return 1
+}
+
 cmd_hook(){
   local sub="${1:-status}"; shift || true
   case "$sub" in
@@ -120,7 +132,7 @@ _hook_write(){
   # quote between the path and "hook run", so grepping 'snare hook run' never
   # matched — status reported not-installed, uninstall silently failed, and a
   # re-install chained snare's own hook into .pre-snare.
-  if [ -f "$path" ] && ! grep -q 'snare-hook-v1' "$path" 2>/dev/null; then
+  if [ -f "$path" ] && ! _is_snare_hook "$path"; then
     mv "$path" "$path.pre-snare"
     ylw "  existing hook preserved: $path.pre-snare"
   fi
@@ -144,7 +156,7 @@ _hook_uninstall(){
   hd="$(cd "$dir" && cd "$hd" 2>/dev/null && pwd)" || die "cannot locate hooks dir"
   local h
   for h in pre-push pre-commit; do
-    if [ -f "$hd/$h" ] && grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then
+    if [ -f "$hd/$h" ] && _is_snare_hook "$hd/$h"; then
       rm -f "$hd/$h"
       grn "  removed: $hd/$h"
       [ -f "$hd/$h.pre-snare" ] && { mv "$hd/$h.pre-snare" "$hd/$h"; dim "  restored your previous $h"; }
@@ -158,8 +170,9 @@ _hook_status(){
   hd="$(cd "$dir" && cd "$hd" 2>/dev/null && pwd)" || { ylw "  not a git repository"; return 0; }
   local h found=0
   for h in pre-push pre-commit; do
-    if [ -f "$hd/$h" ] && grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then
-      grn "  $h: installed"; found=1
+    if [ -f "$hd/$h" ] && _is_snare_hook "$hd/$h"; then
+      if grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then grn "  $h: installed"
+      else ylw "  $h: installed (older version — run 'snare hook install' to refresh)"; fi; found=1
     fi
   done
   [ "$found" = 0 ] && ylw "  no snare hooks installed here (snare hook install)"

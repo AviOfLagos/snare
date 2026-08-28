@@ -37,12 +37,43 @@ need(){ command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installed
 
 # Auth is ALWAYS the caller's own — snare never ships or stores a token.
 require_gh(){
-  need gh
+  # gh missing entirely: say how to get it for this platform rather than
+  # printing a bare "need gh".
+  if ! command -v gh >/dev/null 2>&1; then
+    red "The GitHub CLI (gh) is not installed."
+    case "$SNARE_OS" in
+      macos)     echo "  brew install gh" ;;
+      linux|wsl) echo "  Debian/Ubuntu: see https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
+                 echo "  Fedora:        sudo dnf install gh"
+                 echo "  Arch:          sudo pacman -S github-cli" ;;
+      windows)   echo "  winget install GitHub.cli    (then reopen Git Bash)" ;;
+      *)         echo "  https://cli.github.com" ;;
+    esac
+    exit 2
+  fi
   if ! gh auth status >/dev/null 2>&1; then
     red "Not authenticated to GitHub."
-    echo "  Run:  gh auth login          (browser or paste your own token)"
-    echo "  Or:   export GH_TOKEN=...    (scopes needed: repo, workflow)"
-    exit 2
+    # Offer to do it now rather than making them look up the command. Only
+    # when a human is present: never hijack a script, a hook or a timer.
+    if [ -t 0 ] && [ -t 1 ] && [ -z "${CI:-}" ]; then
+      echo "  snare uses YOUR credentials — it ships no token of its own."
+      printf '  Run "gh auth login" now? [Y/n] '
+      local _ans; read -r _ans
+      case "$_ans" in
+        ""|y|Y|yes|YES)
+          gh auth login || { red "  authentication did not complete"; exit 2; }
+          gh auth status >/dev/null 2>&1 || { red "  still not authenticated"; exit 2; }
+          grn "  authenticated as $(gh api user --jq .login 2>/dev/null)" ;;
+        *)
+          echo "  Run:  gh auth login          (browser or paste your own token)"
+          echo "  Or:   export GH_TOKEN=...    (scopes needed: repo, workflow)"
+          exit 2 ;;
+      esac
+    else
+      echo "  Run:  gh auth login          (browser or paste your own token)"
+      echo "  Or:   export GH_TOKEN=...    (scopes needed: repo, workflow)"
+      exit 2
+    fi
   fi
   gh auth setup-git >/dev/null 2>&1 || true   # no prompts on private clones
 }
