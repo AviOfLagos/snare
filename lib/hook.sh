@@ -105,12 +105,17 @@ _hook_install(){
 _hook_write(){
   local path="$1" mode="$2" self="$3"
   # Preserve an existing non-snare hook rather than destroying someone's setup.
-  if [ -f "$path" ] && ! grep -q 'snare hook run' "$path" 2>/dev/null; then
+  # Match a stable marker, not the invocation line: that line contains a
+  # quote between the path and "hook run", so grepping 'snare hook run' never
+  # matched — status reported not-installed, uninstall silently failed, and a
+  # re-install chained snare's own hook into .pre-snare.
+  if [ -f "$path" ] && ! grep -q 'snare-hook-v1' "$path" 2>/dev/null; then
     mv "$path" "$path.pre-snare"
     ylw "  existing hook preserved: $path.pre-snare"
   fi
   cat > "$path" <<HOOK
 #!/usr/bin/env bash
+# snare-hook-v1
 # installed by snare — blocks a $mode carrying a hidden payload
 [ -n "\$SNARE_SKIP_HOOK" ] && exit 0
 if [ -x "$self" ]; then
@@ -128,7 +133,7 @@ _hook_uninstall(){
   hd="$(cd "$dir" && cd "$hd" 2>/dev/null && pwd)" || die "cannot locate hooks dir"
   local h
   for h in pre-push pre-commit; do
-    if [ -f "$hd/$h" ] && grep -q 'snare hook run' "$hd/$h" 2>/dev/null; then
+    if [ -f "$hd/$h" ] && grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then
       rm -f "$hd/$h"
       grn "  removed: $hd/$h"
       [ -f "$hd/$h.pre-snare" ] && { mv "$hd/$h.pre-snare" "$hd/$h"; dim "  restored your previous $h"; }
@@ -142,7 +147,7 @@ _hook_status(){
   hd="$(cd "$dir" && cd "$hd" 2>/dev/null && pwd)" || { ylw "  not a git repository"; return 0; }
   local h found=0
   for h in pre-push pre-commit; do
-    if [ -f "$hd/$h" ] && grep -q 'snare hook run' "$hd/$h" 2>/dev/null; then
+    if [ -f "$hd/$h" ] && grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then
       grn "  $h: installed"; found=1
     fi
   done
