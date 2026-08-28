@@ -23,6 +23,12 @@ _hook_run(){
   local pattern; pattern="$(ioc_pattern)"
   local bad=0 f
 
+  # snare's own source legitimately contains every IOC string — it is the
+  # detector. Without this the hook blocks every push from snare's own repo,
+  # which is exactly what happened the first time it was installed here.
+  local SELF=0
+  [ -f .snare-tool ] && SELF=1
+
   # Files under consideration: staged for commit, else tracked files.
   local list
   if [ "$mode" = "pre-commit" ]; then
@@ -34,6 +40,11 @@ _hook_run(){
   while IFS= read -r f; do
     [ -z "$f" ] || [ ! -f "$f" ] && continue
     case "$f" in */node_modules/*|node_modules/*) continue ;; esac
+    if [ "$SELF" = 1 ]; then
+      case "$f" in
+        lib/*|bin/*|docs/*|promo/*|iocs.txt|README.md|CHANGELOG.md|.github/*) continue ;;
+      esac
+    fi
 
     # 1. code hidden past a run of whitespace — the signature that matters
     if grep -qE '[^[:space:]][[:space:]]{50,}[^[:space:]]' "$f" 2>/dev/null; then
@@ -105,12 +116,17 @@ _hook_install(){
 _hook_write(){
   local path="$1" mode="$2" self="$3"
   # Preserve an existing non-snare hook rather than destroying someone's setup.
-  if [ -f "$path" ] && ! grep -q 'snare hook run' "$path" 2>/dev/null; then
+  # Match a stable marker, not the invocation line: that line contains a
+  # quote between the path and "hook run", so grepping 'snare hook run' never
+  # matched — status reported not-installed, uninstall silently failed, and a
+  # re-install chained snare's own hook into .pre-snare.
+  if [ -f "$path" ] && ! grep -q 'snare-hook-v1' "$path" 2>/dev/null; then
     mv "$path" "$path.pre-snare"
     ylw "  existing hook preserved: $path.pre-snare"
   fi
   cat > "$path" <<HOOK
 #!/usr/bin/env bash
+# snare-hook-v1
 # installed by snare — blocks a $mode carrying a hidden payload
 [ -n "\$SNARE_SKIP_HOOK" ] && exit 0
 if [ -x "$self" ]; then
@@ -128,7 +144,7 @@ _hook_uninstall(){
   hd="$(cd "$dir" && cd "$hd" 2>/dev/null && pwd)" || die "cannot locate hooks dir"
   local h
   for h in pre-push pre-commit; do
-    if [ -f "$hd/$h" ] && grep -q 'snare hook run' "$hd/$h" 2>/dev/null; then
+    if [ -f "$hd/$h" ] && grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then
       rm -f "$hd/$h"
       grn "  removed: $hd/$h"
       [ -f "$hd/$h.pre-snare" ] && { mv "$hd/$h.pre-snare" "$hd/$h"; dim "  restored your previous $h"; }
@@ -142,7 +158,7 @@ _hook_status(){
   hd="$(cd "$dir" && cd "$hd" 2>/dev/null && pwd)" || { ylw "  not a git repository"; return 0; }
   local h found=0
   for h in pre-push pre-commit; do
-    if [ -f "$hd/$h" ] && grep -q 'snare hook run' "$hd/$h" 2>/dev/null; then
+    if [ -f "$hd/$h" ] && grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null; then
       grn "  $h: installed"; found=1
     fi
   done
