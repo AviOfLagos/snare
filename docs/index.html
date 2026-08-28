@@ -356,6 +356,8 @@ footer{padding:48px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
       <a href="#reports">Reports</a>
       <a href="#detect">Check your machine</a>
       <a href="#install">Install</a>
+      <a href="#commands">Commands</a>
+      <a href="#security">Report a bug</a>
       <a class="nav-cta" href="#install">Install snare</a>
     </div>
   </div>
@@ -768,6 +770,183 @@ snare doctor</pre></div></div>
         <tr><td><code>git-filter-repo</code></td><td>Optional — only for <code>snare fix --purge-history</code>.</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<section class="stack" id="commands">
+  <span class="eyebrow">Reference</span>
+  <h2>Every command, and what it will not do</h2>
+  <p class="lede">snare is about 2,200 lines of <code>bash</code>. No framework, no
+  <code>npm install</code> — deliberately, because npm is the attack surface. It needs
+  <code>bash</code>, <code>git</code>, <code>python3</code> and the GitHub CLI.
+  The core heuristic is language-agnostic; the config list is tuned for the JavaScript
+  ecosystem, because that is where this family lives.</p>
+
+  <div class="stack-s">
+    <h3>Find it</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">Scanning</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare scan                      scan the current directory
+snare scan repo [path]          one clone: working tree, all branches, full history
+snare scan repo [path] --new    only findings that are not in the baseline
+snare scan github               every repo you can reach, via the API (no cloning)
+snare scan github --mine        only repos you own
+snare scan github --all-branches
+snare doctor                    this machine, persistence spots, and your GitHub account
+snare selftest                  prove detection still works against known samples</pre></div></div>
+
+    <p class="note"><strong>Read this before trusting a clean result.</strong>
+    <code>scan github</code> reads <em>branch tips through the API</em>. It cannot see
+    history, and it fetches a bounded set of files. A payload that was committed and
+    later removed, or one hidden somewhere it does not look, will not appear.
+    <code>scan repo</code> against a real clone is the thorough check — it walks every
+    branch and every commit. The infection that started all of this survived a clean
+    127-repository API sweep and was only caught by <code>scan repo</code>.</p>
+
+    <p class="note"><code>selftest</code> exists because four defects once made snare
+    report <em>clean</em> on infected repositories. It builds a scratch repo of known-bad
+    and known-good samples, runs the real scanner, and exits non-zero on any mismatch.
+    If it fails, do not trust any clean result until it passes.</p>
+
+    <h3>Stop it running</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">Guard · shield</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare guard install             kill the loader on sight, from login onwards
+snare guard scan                one-shot check of this machine
+snare guard status | log | stop | start | uninstall
+
+snare shield install            scan before npm/pnpm/yarn/bun/npx and git clone run
+snare shield status | uninstall
+snare shield check [path]       the fast check on its own (~22ms)</pre></div></div>
+
+    <p class="note">The <strong>guard</strong> is a background process (launchd on macOS,
+    a systemd user unit on Linux, a logon Scheduled Task on Windows). It polls once per
+    second, so a payload can still act before it is caught, and it cannot see code already
+    running inside another process.</p>
+
+    <p class="note">The <strong>shield</strong> wraps package managers in your shell so a
+    scan happens before they can execute anything. Honest limits: it is shell-only, so it
+    cannot see VS Code's own <code>folderOpen</code> task — that is the guard's job — and
+    anyone can bypass it with <code>command npm</code> or <code>SNARE_SKIP_SHIELD=1</code>.
+    It is a seatbelt, not a sandbox.</p>
+
+    <h3>Stop it spreading</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">Hook · CI</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare hook install              block a push that carries a payload
+snare hook install --with-pre-commit
+snare hook status | uninstall
+
+snare ci install                write a GitHub Actions workflow into this repo
+snare ci status                 is the workflow installed, and is the check required?
+snare ci print                  print the workflow without writing it</pre></div></div>
+
+    <p class="note">This family injects into commits <em>from an already-infected machine</em>,
+    so the payload leaves before anyone scans a repository. The <strong>hook</strong> is the
+    only feature that prevents that rather than detecting it afterwards. It also refuses the
+    push when the machine itself has a live detection, because a clean repo pushed from an
+    infected machine can still carry the payload out.</p>
+
+    <p class="note"><strong>GitHub.com cannot reject a push outright</strong> — server-side
+    pre-receive hooks are an Enterprise feature. A required status check is the practical
+    equivalent: the merge button stays disabled until the scan passes. <code>ci install</code>
+    writes the workflow, but <em>you</em> must tick it as required under
+    Settings → Branches. Until you do, it reports and blocks nothing —
+    <code>snare ci status</code> will tell you when that is the case.</p>
+
+    <h3>Clean up</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">Fix · rotate · notify</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare fix &lt;owner/repo&gt;                        dry run (always backs up first)
+snare fix &lt;owner/repo&gt; --push                 clean branch tips and push
+snare fix &lt;owner/repo&gt; --purge-history --push erase it from all history
+snare fix --all                               every repo the last scan flagged
+
+snare rotate                    what to revoke, in order, plus a GitHub audit
+snare notify &lt;owner/repo&gt;       list collaborators and preview the notice
+snare notify &lt;owner/repo&gt; --issue | --mail</pre></div></div>
+
+    <p class="note"><strong>Rotate before you clean.</strong> Stealing credentials is what
+    this family is <em>for</em>; the file in your repository is delivery, not payload.
+    Removing it does not un-steal a token. <code>snare rotate</code> lists what to revoke
+    in order — npm write tokens first, because a stolen one lets the worm publish
+    trojanised versions of your other packages under your name — and audits your GitHub
+    account for the repositories and secret-exporting workflows this family leaves behind.</p>
+
+    <p class="note"><code>--purge-history</code> rewrites every commit, so every SHA changes.
+    Collaborators must <em>re-clone</em>, not pull, and forks and pull-request refs still
+    hold the old objects. <code>fix --all</code> is a dry run by default and requires you to
+    type the repository count to confirm, because it can force-push.</p>
+
+    <h3>Keep watch</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">Reports · baseline · update</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare report                    scan, save a timestamped report
+snare report --json             machine-readable; exits non-zero on findings
+snare schedule install --daily  run it on a timer and notify on findings
+snare schedule status | uninstall
+
+snare baseline set              accept the current findings as known
+snare baseline status | clear
+
+snare update                    pull the latest version
+snare update --check            is a newer version available?</pre></div></div>
+
+    <p class="note">Reports write to <code>$SNARE_HOME/reports</code> and exit non-zero when
+    something is found, so a timer or a CI job can act on the result. There is deliberately
+    <strong>no email</strong>: SMTP credentials in a security tool are a liability, and a
+    report file plus a native notification does the same job with nothing worth stealing.</p>
+
+    <p class="note"><strong>Accepting a finding into a baseline silences it — it does not
+    make it safe.</strong> Only baseline what you have actually read.</p>
+
+    <p class="note"><code>snare update</code> matters more than it looks. Every clone made
+    before 27 August 2026 contains defects that made the working-tree scan report
+    <em>clean</em> on infected repositories. If you installed snare before then, update
+    before you trust it, and run <code>snare selftest</code> afterwards.</p>
+  </div>
+</section>
+
+<section class="stack" id="security">
+  <span class="eyebrow">Found a hole?</span>
+  <h2>Tell us — that is the whole ask</h2>
+  <p class="lede">This tool has shipped bugs that made it report clean on genuinely
+  infected repositories. Every one was found by someone actually testing it rather than
+  reading it. If you find another, that is the most useful contribution there is.</p>
+
+  <div class="stack-s">
+    <p>Things worth reporting, in rough order of how much we want to hear about them:</p>
+    <ol class="chain">
+      <li><b>A false clean</b><span>A repository or sample snare says is fine and is not.
+      This is the worst failure a scanner can have, and the one we most want reported.</span></li>
+      <li><b>An evasion</b><span>A payload shaped so the heuristics miss it, or a way to hide
+      from the guard, the hook or the shield. One such hole let any process hide from the
+      guard simply by having the word <code>snare</code> in its command line.</span></li>
+      <li><b>A false positive</b><span>Noisy enough that people would learn to ignore the
+      output. That is a real failure too — a scanner nobody reads protects nobody.</span></li>
+      <li><b>A variant we do not detect</b><span>A different config file, a different
+      execution route, a different obfuscation.</span></li>
+      <li><b>Anything destructive</b><span>A case where <code>fix</code> removes something it
+      should not, or reports success without having done anything.</span></li>
+    </ol>
+
+    <p><strong>Open an issue. That is the first step, and it is enough.</strong>
+    You do not need a fix, a pull request, or a polished write-up — a repository name, a
+    file, or "this sample is not caught" is plenty. If you would rather not post details
+    publicly, open an issue saying so without the specifics and we will find another way.</p>
+
+    <div class="panel"><div class="panel-bar"><span class="label">Report it</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>https://github.com/AviOfLagos/snare/issues/new
+
+# helpful, if you have it:
+snare selftest          # does detection still work on your machine?
+snare version
+bash --version          # macOS ships bash 3.2; several bugs were 3.2-specific</pre></div></div>
+
+    <p class="note">Known-good starting points if you want to poke at it: the heuristics
+    live in <code>lib/scan.sh</code>, the process matching in <code>lib/guard.sh</code>,
+    and the history rewriting in <code>lib/fix.sh</code>. <code>snare selftest</code>
+    shows the shape of a test case; adding one that fails is a perfectly good bug report.</p>
+
+    <p class="note">There is also an open discussion on the two questions we cannot answer
+    ourselves: how this family actually reaches developer machines, and whether a defence
+    can propagate the way the infection does without becoming a dropper itself.
+    <a href="https://github.com/AviOfLagos/snare/discussions">Join it here.</a></p>
   </div>
 </section>
 
