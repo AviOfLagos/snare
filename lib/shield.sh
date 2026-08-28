@@ -128,8 +128,24 @@ _shield_install(){
   local rc; rc="$(_shield_rc)"
   touch "$rc" 2>/dev/null || die "cannot write $rc"
   if grep -qF "$SHIELD_BEGIN" "$rc" 2>/dev/null; then
-    ylw "  already installed in $rc"
-    dim "  update it: snare shield uninstall && snare shield install"
+    # An installed block from an older snare can be silently WRONG — an early
+    # version gated on [ -t 1 ], so "npm install > log 2>&1" skipped the check
+    # entirely. Refusing to touch it left people believing they were protected.
+    # Compare what is installed against what we would write, and refresh it.
+    local cur new
+    cur="$(sed -n "/^${SHIELD_BEGIN}\$/,/^${SHIELD_END}\$/p" "$rc" 2>/dev/null)"
+    new="$(_shield_snippet)"
+    if [ "$cur" = "$new" ]; then
+      grn "  already installed and up to date ($rc)"
+      return 0
+    fi
+    ylw "  an older shield is installed — refreshing it"
+    cp "$rc" "$rc.snare-backup" 2>/dev/null
+    _shield_uninstall >/dev/null 2>&1
+    { echo; _shield_snippet; } >> "$rc"
+    grn "  updated in $rc"
+    dim "  backup: $rc.snare-backup"
+    dim "  Takes effect in new shells, or run:  source $rc"
     return 0
   fi
   cp "$rc" "$rc.snare-backup" 2>/dev/null

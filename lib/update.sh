@@ -113,11 +113,54 @@ cmd_update(){
     dim "  relinked $bin/snare -> $SNARE_ROOT/bin/snare"
   fi
 
-  # A guard running the old code keeps running it until restarted.
-  if launchctl list 2>/dev/null | grep -q com.snare.guard; then
-    echo; ylw "  the background guard is running the previous version"
-    dim "  restart it:  snare guard stop && snare guard start"
+  # Updating the checkout does not update anything snare has installed
+  # elsewhere. Those copies keep running old code, and in the shield's case an
+  # old copy was silently WRONG rather than merely stale — so say what needs
+  # refreshing instead of leaving people to assume it was handled.
+  local stale=0
+
+  if launchctl list 2>/dev/null | grep -q com.snare.guard \
+     || systemctl --user is-active snare-guard >/dev/null 2>&1; then
+    echo; ylw "  the background guard is still running the previous version"
+    dim "    snare guard stop && snare guard start"
+    stale=1
   fi
+
+  # Shield: compare the installed block against what we would write now.
+  local rc
+  case "$(basename "${SHELL:-/bin/bash}")" in
+    zsh)  rc="${ZDOTDIR:-$HOME}/.zshrc" ;;
+    bash) rc="$HOME/.bashrc"; [ -f "$rc" ] || rc="$HOME/.bash_profile" ;;
+    *)    rc="$HOME/.profile" ;;
+  esac
+  if [ -f "$rc" ] && grep -qF '# >>> snare shield >>>' "$rc" 2>/dev/null; then
+    local cur_block new_block
+    cur_block="$(sed -n '/^# >>> snare shield >>>$/,/^# <<< snare shield <<<$/p' "$rc" 2>/dev/null)"
+    new_block="$(_shield_snippet 2>/dev/null)"
+    if [ "$cur_block" != "$new_block" ]; then
+      [ "$stale" = 0 ] && echo
+      ylw "  the installed shell shield is from an older version"
+      dim "    snare shield install     (refreshes it in place)"
+      stale=1
+    fi
+  fi
+
+  # Hooks in this repo, if snare is being run from inside one.
+  local hd
+  hd="$(git rev-parse --git-path hooks 2>/dev/null)"
+  if [ -n "$hd" ] && [ -d "$hd" ]; then
+    local h
+    for h in pre-push pre-commit; do
+      if [ -f "$hd/$h" ] && ! grep -q 'snare-hook-v1' "$hd/$h" 2>/dev/null \
+         && grep -qE 'snare"?[[:space:]]+hook[[:space:]]+run' "$hd/$h" 2>/dev/null; then
+        [ "$stale" = 0 ] && echo
+        ylw "  the $h hook in this repository is from an older version"
+        dim "    snare hook install       (upgrades it in place)"
+        stale=1
+      fi
+    done
+  fi
+
   echo
   dim "  verify detection still works:  snare selftest"
 }
