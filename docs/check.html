@@ -26,9 +26,24 @@
 <link rel="expect" href="#main" blocking="render">
 <script>/* apply a pinned theme before first paint so the page never flashes */
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"Check your machine","item":"https://avioflagos.github.io/snare/check.html"}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+ {"@type":"Question","name":"How do I know if my machine is infected with this malware?",
+  "acceptedAnswer":{"@type":"Answer","text":"Look for a node process running inline code with obfuscated globals, any file carrying the operator's wallet address, a .vscode/tasks.json task set to runOn folderOpen, and font files whose first four bytes are not a real font magic. A genuine .woff2 begins with wOF2."}},
+ {"@type":"Question","name":"Does npm audit detect this?",
+  "acceptedAnswer":{"@type":"Answer","text":"No. The dropper is committed into the repository itself rather than pulled from the registry, so there is no malicious dependency for npm audit, the lockfile or Dependabot to report."}},
+ {"@type":"Question","name":"My process check came back clean. Am I safe?",
+  "acceptedAnswer":{"@type":"Answer","text":"Not necessarily. The loader runs when a build runs or an editor opens the folder, then exits. A clean process check alongside infected repositories is the expected result, not a contradiction."}}]}
+</script>
 </head>
 <body data-page="check">
 <a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -53,6 +68,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 <div class="wrap page-head">
@@ -66,14 +82,14 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <div class="wrap">
 <section class="stack" id="detect">
   <div class="check">
-    <h3>1 · Is a loader running right now?</h3>
+    <h2>1 · Is a loader running right now?</h2>
     <div class="panel"><div class="panel-bar"><span class="label">macOS · Linux</span><div class="bar-actions"></div></div>
       <div class="scroller"><pre>ps -eo pid,args | grep -E "node .*-e .*global\[" | grep -v grep</pre></div></div>
     <p class="verdict">No output means nothing is running. Any output is a live process — kill it.</p>
   </div>
 
   <div class="check">
-    <h3>2 · Does any file carry the operator's wallet?</h3>
+    <h2>2 · Does any file carry the operator's wallet?</h2>
     <div class="panel"><div class="panel-bar"><span class="label">working tree</span><div class="bar-actions"></div></div>
       <div class="scroller"><pre>grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .</pre></div></div>
     <div class="panel" style="margin-top:8px"><div class="panel-bar"><span class="label">and the full history — a deleted file still lives in Git</span><div class="bar-actions"></div></div>
@@ -81,21 +97,21 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
   </div>
 
   <div class="check">
-    <h3>3 · Is a task set to run when you open the folder?</h3>
+    <h2>3 · Is a task set to run when you open the folder?</h2>
     <div class="panel"><div class="panel-bar"><span class="label">editor auto-run</span><div class="bar-actions"></div></div>
       <div class="scroller"><pre>grep -rn "folderOpen" .vscode/tasks.json</pre></div></div>
     <p class="verdict bad">Any hit executes the moment the folder opens. Treat it as hostile until proven otherwise.</p>
   </div>
 
   <div class="check">
-    <h3>4 · Are your font files actually fonts?</h3>
+    <h2>4 · Are your font files actually fonts?</h2>
     <div class="panel"><div class="panel-bar"><span class="label">magic bytes</span><div class="bar-actions"></div></div>
       <div class="scroller"><pre>head -c 4 public/fonts/*.woff2</pre></div></div>
     <p class="verdict">Every real font prints <code>wOF2</code>. Spaces mean you are looking at a script.</p>
   </div>
 
   <div class="callout">
-    <h3>Look for the long line</h3>
+    <h2>Look for the long line</h2>
     <p>The most reliable giveaway is geometry, not content. This finds any file padded out to hide
     something past the edge of the screen — a hand-written config has no business being 9,000
     characters wide.</p>
@@ -123,7 +139,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </a>
   </div>
   <div class="callout">
-    <h3>A clean result is narrower than it looks</h3>
+    <h2>A clean result is narrower than it looks</h2>
     <p>Checks 2, 3 and 4 test <strong>one clone</strong> — not your other repositories, and not the
     branches you do not have checked out. Check 1 reports what is running <em>right now</em>; the
     loader fires when a build runs or an editor opens the folder, does its work, and exits, so a

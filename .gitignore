@@ -2,8 +2,11 @@
 .snare/
 logs/
 work/
+temp_auto_push.bat
 backups/
 *.bundle
 .DS_Store
 promo/.devto_url
 .devto_key
+.gitignore
+branch_structure.json
