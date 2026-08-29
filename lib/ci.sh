@@ -6,7 +6,9 @@
 # equivalent: the merge button stays disabled until the scan passes.
 
 cmd_ci(){
-  local sub="${1:-install}"; shift || true
+  # Default to status, like guard/shield/hook/baseline. Defaulting to install
+  # meant a bare `snare ci` tried to write a workflow and failed outside a repo.
+  local sub="${1:-status}"; shift || true
   case "$sub" in
     install) _ci_install "$@" ;;
     status)  _ci_status "$@" ;;

@@ -13,7 +13,7 @@ _bl_key(){
   local d="${1:-$PWD}" url
   url="$(git -C "$d" config --get remote.origin.url 2>/dev/null)"
   [ -z "$url" ] && url="$(cd "$d" 2>/dev/null && pwd)"
-  printf '%s' "$url" | shasum 2>/dev/null | cut -c1-16
+  printf '%s' "$url" | short_hash
 }
 
 _bl_file(){ printf '%s/%s.txt' "$SNARE_BASELINES" "$(_bl_key "${1:-$PWD}")"; }
@@ -26,7 +26,7 @@ _bl_fingerprint(){
     | sed 's/:[0-9][0-9]*:/:/g' \
     | tr -s ' ' \
     | sed 's/[0-9]\{3,\}/N/g' \
-    | shasum 2>/dev/null | cut -c1-16
+    | short_hash
 }
 
 cmd_baseline(){

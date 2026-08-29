@@ -96,6 +96,26 @@ JSON
   _st_expect "genuine .woff2 (wOF2 magic)"           clean 'real_font2\.woff2'    "$out"
   _st_expect "long but clean minified JS"            clean 'minified\.js'         "$out"
 
+  hdr "Portability"
+  # xxd is absent on minimal Linux images and some Git Bash installs. When it
+  # was required, every genuine font read as a payload — and the pre-push hook
+  # then blocked every push from any repo containing fonts.
+  local _pd; _pd="$(mktemp -d "${TMPDIR:-/tmp}/snarepath.XXXXXX")"
+  printf '#!/bin/sh\nexit 127\n' > "$_pd/xxd";    chmod +x "$_pd/xxd"
+  printf '#!/bin/sh\nexit 127\n' > "$_pd/shasum"; chmod +x "$_pd/shasum"
+  local out2; out2="$(PATH="$_pd:$PATH" cmd_scan_repo "$T" 2>&1)"
+  if echo "$out2" | grep '\[!\]' | grep -q 'real_font'; then
+    _st_bad "genuine fonts still pass without xxd/shasum"
+  else
+    _st_ok "genuine fonts still pass without xxd/shasum"
+  fi
+  if echo "$out2" | grep '\[!\]' | grep -q 'public_fake'; then
+    _st_ok "fake font still caught without xxd/shasum"
+  else
+    _st_bad "fake font still caught without xxd/shasum"
+  fi
+  rm -rf "$_pd"
+
   hdr "Scanner self-exclusion"
   local selfout; selfout="$(cmd_scan_repo "$SNARE_ROOT" 2>&1)"
   _st_expect "snare's own lib/ not self-reported"    clean 'lib/scan\.sh'         "$selfout"

@@ -39,10 +39,10 @@ cmd_shield_check(){
   # 3. assets that are not the asset they claim to be
   while IFS= read -r f; do
     [ -z "$f" ] && continue
-    case "$(head -c 4 "$f" 2>/dev/null | xxd -p 2>/dev/null)" in
-      774f4632|774f4646|00010000|4f54544f|74727565) ;;
-      *) [ "$quiet" = 0 ] && red "  [!] $f — not a real font (no valid magic bytes)"; found=1 ;;
-    esac
+    if ! is_font "$f"; then
+      [ "$quiet" = 0 ] && red "  [!] $f — not a real font (no valid magic bytes)"
+      found=1
+    fi
   done < <(find "$dir" -maxdepth 4 \( -name '*.woff2' -o -name '*.woff' -o -name '*.ttf' -o -name '*.otf' \) \
              -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | head -20)
 
