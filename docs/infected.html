@@ -25,9 +25,31 @@
 <link rel="stylesheet" href="assets/site.css">
 <script>/* apply a pinned theme before first paint so the page never flashes */
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"If you're infected","item":"https://avioflagos.github.io/snare/infected.html"}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"HowTo",
+ "name":"Remove a committed supply-chain dropper from your repositories",
+ "description":"Rotate credentials first, then clean the machine you push from, then the repositories, then tell your collaborators. Cleaning repositories first is wasted work on an infected machine.","url":"https://avioflagos.github.io/snare/infected.html",
+ "totalTime":"PT30M",
+ "tool":[{"@type":"HowToTool","name":"snare"}],
+ "step":[
+  {"@type":"HowToStep","position":1,"name":"Rotate your credentials",
+   "text":"Stealing credentials is the objective; removing the payload does not un-steal a token. Revoke npm write tokens first, then GitHub tokens, SSH keys and cloud keys.","url":"https://avioflagos.github.io/snare/infected.html#rotate"},
+  {"@type":"HowToStep","position":2,"name":"Clean the machine you push from",
+   "text":"This family injects into commits as they leave an already-infected machine, so cleaning a repository first is wasted work.","url":"https://avioflagos.github.io/snare/infected.html#machine"},
+  {"@type":"HowToStep","position":3,"name":"Clean the repositories",
+   "text":"snare fix is a dry run by default and always backs up first. Purging history rewrites every commit SHA, so every clone must be re-cloned rather than pulled.","url":"https://avioflagos.github.io/snare/infected.html#repos"},
+  {"@type":"HowToStep","position":4,"name":"Tell your collaborators",
+   "text":"They may be infected from the same source, and a rewritten history breaks their clones without explanation.","url":"https://avioflagos.github.io/snare/infected.html#notify"}]}
+</script>
 </head>
 <body data-page="infected">
 <a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -52,6 +74,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 <div class="wrap page-head">

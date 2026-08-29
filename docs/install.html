@@ -25,9 +25,23 @@
 <link rel="stylesheet" href="assets/site.css">
 <script>/* apply a pinned theme before first paint so the page never flashes */
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"Install snare","item":"https://avioflagos.github.io/snare/install.html"}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"snare",
+ "applicationCategory":"SecurityApplication","operatingSystem":"macOS, Linux, Windows, WSL",
+ "softwareVersion":"1.1.0","url":"https://avioflagos.github.io/snare/install.html","codeRepository":"https://github.com/AviOfLagos/snare",
+ "license":"https://opensource.org/licenses/MIT",
+ "description":"Install the free open-source scanner in about a minute. Requires bash, git, python3 and the GitHub CLI. It ships no token of its own and uses your own GitHub credentials.",
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
 </head>
 <body data-page="install">
 <a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -52,6 +66,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 <div class="wrap page-head">
