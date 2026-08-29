@@ -1,0 +1,111 @@
+<!--#title: If you're infected — what to do, in the order that matters — snare-->
+<!--#desc: Rotate credentials first, then clean the machine you push from, then the repositories, then tell your collaborators. Cleaning repositories first is wasted work on an infected machine.-->
+<!--#nav: infected-->
+<!--#prev: check.html|Check your machine-->
+<!--#next: install.html|Install snare-->
+<div class="wrap page-head">
+  <span class="eyebrow">Found something?</span>
+  <h1>What to do, in the order that matters</h1>
+  <p class="lede">The instinct is to clean the repositories first. That is the wrong order, and on
+  an infected machine it is wasted work — this family injects into commits on their way out, so it
+  re-infects whatever you just cleaned.</p>
+</div>
+
+<div class="wrap">
+<section class="stack" id="order">
+  <span class="eyebrow">The order</span>
+  <h2>Four steps, and the sequence is the point</h2>
+  <ol class="chain">
+    <li><b>Rotate your credentials</b><span>Stealing them is the objective; the
+    file in your repository is delivery, not payload. Removing it does not un-steal
+    a token. <b>npm write tokens first</b> — a stolen one lets the worm publish
+    trojanised versions of your other packages under your name, which is how one
+    laptop becomes a supply-chain incident.</span></li>
+    <li><b>Clean the machine you push from</b><span>Before touching any
+    repository. If several repositories are flagged, the common factor is almost
+    always the machine that pushed to them, not several separate accidents.</span></li>
+    <li><b>Then clean the repositories</b><span><code>snare fix</code> is a dry
+    run by default and always backs up first. Only add <code>--push</code> once you
+    have read what it would change.</span></li>
+    <li><b>Then tell your collaborators</b><span>They may be infected from the
+    same source, and if you rewrote history their clones will break with no
+    explanation.</span></li>
+  </ol>
+</section>
+
+<section class="stack" id="rotate">
+  <span class="eyebrow">Step 1</span>
+  <h2>Rotate</h2>
+  <div class="panel"><div class="panel-bar"><span class="label">Do this first</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>snare rotate        # the ordered checklist, plus a GitHub audit</pre></div></div>
+  <p class="note">In order: <strong>npm tokens</strong>
+  (<code>npmjs.com/settings/~/tokens</code> — write and "bypass 2FA" first), then
+  <strong>GitHub</strong> PATs, OAuth apps and SSH keys, then <strong>cloud keys</strong>
+  (AWS — including Secrets Manager in every region you use — GCP, Azure), then
+  everything else the process could read: <code>.env</code> files in any project you
+  had open, kubeconfig, Vault tokens, database URLs, VPN, AI-service keys, wallet
+  keys and seed phrases. Finally <strong>your clipboard</strong> — this family has a
+  documented clipboard stealer, so a password pasted out of a manager while infected
+  should be treated as seen.</p>
+</section>
+
+<section class="stack" id="machine">
+  <span class="eyebrow">Step 2</span>
+  <h2>Clean the machine</h2>
+  <div class="panel"><div class="panel-bar"><span class="label">Before touching any repo</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>snare doctor          # machine, persistence spots, your GitHub account
+snare guard scan      # one-shot process check
+snare guard install   # kill the loader on sight, from login onwards</pre></div></div>
+  <p class="note"><strong><code>guard scan</code> saying "clean" does not mean you
+  were never infected.</strong> It reports what is running <em>right now</em>. The
+  loader fires when a build runs or an editor opens the folder, does its work, and
+  exits. A clean process check alongside infected repositories is the expected
+  result, not a contradiction.</p>
+</section>
+
+<section class="stack" id="repos">
+  <span class="eyebrow">Step 3</span>
+  <h2>Clean the repositories</h2>
+  <div class="panel"><div class="panel-bar"><span class="label">Dry run first — always</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>snare fix owner/repo                        # dry run, changes nothing
+snare fix --all                             # dry run over everything flagged
+
+snare fix owner/repo --push                 # clean the branch tips
+snare fix owner/repo --purge-history --push # erase it from all history</pre></div></div>
+  <p class="note"><code>--purge-history</code> rewrites every commit, so <strong>every
+  SHA changes</strong>. Collaborators must delete their clone and re-clone; a
+  <code>git pull</code> will conflict or silently reintroduce old objects. Forks and
+  pull-request refs keep the old objects regardless — ask GitHub Support to
+  garbage-collect them if that matters to you.</p>
+  <p class="note">Afterwards, verify rather than assume. <code>snare scan github</code>
+  only reads branch tips; run <code>snare scan repo</code> against a fresh clone to
+  walk full history.</p>
+</section>
+
+<section class="stack" id="notify">
+  <span class="eyebrow">Step 4</span>
+  <h2>Tell the others</h2>
+  <div class="panel"><div class="panel-bar"><span class="label">Contacts and templates</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>snare notify owner/repo             # list collaborators, preview the notice
+snare notify owner/repo --issue     # file a GitHub issue @-mentioning them
+snare notify owner/repo --mail      # open a pre-filled mail draft per person</pre></div></div>
+  <p class="note">Both templates lead with credential rotation and say plainly that
+  this is not an accusation: the malware injects from an already-infected machine, so
+  a collaborator whose commit carried it was almost certainly a victim rather than a
+  cause. Say that early, or you will not get the reply you need.</p>
+</section>
+
+<section class="stack" id="many">
+  <span class="eyebrow">If the count is high</span>
+  <h2>If a lot of repositories are flagged</h2>
+  <p>Fifteen infected repositories is not fifteen accidents. It points at one machine
+  that pushed to all of them. Work out which machine that is before cleaning anything,
+  or you will clean the same repositories twice.</p>
+  <p class="note">Worth knowing what you scaffold new projects with — a starter
+  template, a <code>create-*</code> command, a downloaded theme, an editor extension.
+  The delivery mechanism for this family is <strong>still unidentified</strong>, and
+  that is the single most useful thing anyone can contribute. If you find yours,
+  <a href="https://github.com/AviOfLagos/snare/discussions">say so in the
+  discussion</a>.</p>
+</section>
+</div>

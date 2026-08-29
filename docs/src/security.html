@@ -1,0 +1,57 @@
+<!--#title: Report a bug — a false clean is the one we most want — snare-->
+<!--#desc: snare has shipped bugs that made it report clean on genuinely infected repositories. If you find another, that is the most useful contribution there is. What to report, and how.-->
+<!--#nav: none-->
+<!--#prev: community.html|Community-->
+<div class="wrap page-head">
+  <span class="eyebrow">Found a hole?</span>
+  <h1>Tell us — that is the whole ask</h1>
+  <p class="lede">This tool has shipped bugs that made it report clean on genuinely
+  infected repositories. Every one was found by someone actually testing it rather than
+  reading it. If you find another, that is the most useful contribution there is.</p>
+</div>
+
+<div class="wrap">
+<section class="stack" id="what">
+  <span class="eyebrow">What to report</span>
+  <h2>In rough order of how much we want to hear about it</h2>
+  <ol class="chain">
+    <li><b>A false clean</b><span>A repository or sample snare says is fine and is not.
+    This is the worst failure a scanner can have, and the one we most want reported.</span></li>
+    <li><b>An evasion</b><span>A payload shaped so the heuristics miss it, or a way to hide
+    from the guard, the hook or the shield. One such hole let any process hide from the
+    guard simply by having the word <code>snare</code> in its command line.</span></li>
+    <li><b>A false positive</b><span>Noisy enough that people would learn to ignore the
+    output. That is a real failure too — a scanner nobody reads protects nobody.</span></li>
+    <li><b>A variant we do not detect</b><span>A different config file, a different
+    execution route, a different obfuscation.</span></li>
+    <li><b>Anything destructive</b><span>A case where <code>fix</code> removes something it
+    should not, or reports success without having done anything.</span></li>
+  </ol>
+</section>
+
+<section class="stack" id="how">
+  <span class="eyebrow">How</span>
+  <h2>Open an issue. That is enough.</h2>
+  <p><strong>You do not need a fix, a pull request, or a polished write-up</strong> — a repository
+  name, a file, or "this sample is not caught" is plenty. If you would rather not post details
+  publicly, open an issue saying so without the specifics and we will find another way.</p>
+
+  <div class="panel"><div class="panel-bar"><span class="label">Report it</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>https://github.com/AviOfLagos/snare/issues/new
+
+# helpful, if you have it:
+snare selftest          # does detection still work on your machine?
+snare version
+bash --version          # macOS ships bash 3.2; several bugs were 3.2-specific</pre></div></div>
+
+  <p class="note">Known-good starting points if you want to poke at it: the heuristics
+  live in <code>lib/scan.sh</code>, the process matching in <code>lib/guard.sh</code>,
+  and the history rewriting in <code>lib/fix.sh</code>. <code>snare selftest</code>
+  shows the shape of a test case; adding one that fails is a perfectly good bug report.</p>
+
+  <p class="note">There is also an open discussion on the two questions we cannot answer
+  ourselves: how this family actually reaches developer machines, and whether a defence
+  can propagate the way the infection does without becoming a dropper itself.
+  <a href="https://github.com/AviOfLagos/snare/discussions">Join it here.</a></p>
+</section>
+</div>

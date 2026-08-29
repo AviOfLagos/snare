@@ -1,0 +1,153 @@
+<!--#title: Documentation — snare-->
+<!--#desc: Everything there is to read about snare: install, the full command reference, the response playbook, how authentication works, how to add your own detection patterns, and the honest limits.-->
+<!--#nav: docs-->
+<!--#prev: install.html|Install snare-->
+<!--#next: commands.html|Command reference-->
+<div class="docs">
+  <aside class="toc" aria-label="On this page">
+    <span class="toc-title">Documentation</span>
+    <ul>
+      <li><a href="#start">Start here</a></li>
+      <li><a href="#auth">Auth and permissions</a></li>
+      <li><a href="#extend">Extending detection</a></li>
+      <li><a href="#state">Where state lives</a></li>
+      <li><a href="#all">Every page</a></li>
+    </ul>
+    <span class="sep">Reference</span>
+    <ul>
+      <li><a href="commands.html">Command reference</a></li>
+      <li><a href="changelog.html">Changelog</a></li>
+      <li><a href="security.html">Report a bug</a></li>
+      <li><a href="https://github.com/AviOfLagos/snare#readme">README on GitHub</a></li>
+    </ul>
+  </aside>
+
+  <div class="docs-body">
+  <div class="page-head">
+    <span class="eyebrow">Documentation</span>
+    <h1>Everything there is to read</h1>
+    <p class="lede">snare is a single <code>bash</code> program with no build step and no
+    dependencies from a package registry. That keeps the documentation short: install it, learn
+    about a dozen commands, and understand what it cannot do.</p>
+  </div>
+
+  <div class="jump">
+    <a href="#start">Start here</a>
+    <a href="#auth">Auth</a>
+    <a href="#extend">Extending</a>
+    <a href="#state">State</a>
+    <a href="#all">Every page</a>
+  </div>
+
+  <section class="stack" id="start">
+    <span class="eyebrow">Start here</span>
+    <h2>Four ways in, depending on why you are here</h2>
+    <div class="next">
+      <a class="next-card urgent" href="infected.html">
+        <span class="step">Something is wrong</span>
+        <b>The response playbook</b>
+        <p>Rotate, clean the machine, clean the repositories, tell your collaborators — in that
+        order, and the order is the point.</p>
+      </a>
+      <a class="next-card" href="check.html">
+        <span class="step">Not sure</span>
+        <b>Four checks by hand</b>
+        <p>Read-only commands against any clone. Nothing to install, about a minute.</p>
+      </a>
+      <a class="next-card" href="install.html">
+        <span class="step">Set it up</span>
+        <b>Install and first run</b>
+        <p>macOS, Linux, Windows or WSL, plus the four commands that matter on day one.</p>
+      </a>
+      <a class="next-card" href="commands.html">
+        <span class="step">Look something up</span>
+        <b>Command reference</b>
+        <p>Every command grouped by purpose, each with the limits written next to it.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="stack" id="auth">
+    <span class="eyebrow">Auth</span>
+    <h2>It uses your credentials, and stores none</h2>
+    <p class="lede">snare ships no token of its own. Every GitHub call goes through the GitHub CLI
+    using <em>your</em> account, which means it can only ever reach what you can already reach.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">authenticate</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>gh auth login              # browser, or paste your own token
+export GH_TOKEN=...        # or an env var</pre></div></div>
+    <p class="note">Scopes needed: <code>repo</code> and <code>workflow</code>. <strong>Do not use a
+    token with broader permissions.</strong> A scanner does not need to administer your account,
+    and a token that can do more is a token worth more to whoever steals it.</p>
+    <div class="callout">
+      <h3>If you are here because you were compromised</h3>
+      <p>Do not authenticate with a token that existed while the machine was infected. Rotate
+      first, then log in with the new credential — the <a href="infected.html#rotate">rotation
+      order is here</a>. This family harvests token files and environment variables, so a token
+      you reuse is a token the operator may already hold.</p>
+    </div>
+  </section>
+
+  <section class="stack" id="extend">
+    <span class="eyebrow">Extending</span>
+    <h2>Adding your own detection patterns</h2>
+    <p class="lede">All detection reads a single file. Add a pattern there and every command —
+    scan, guard, hook, shield, CI — picks it up, with no code change.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">iocs.txt — one extended regex per line, # for comments</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre># a wallet address seen in a new variant
+0x[0-9a-fA-F]{40}
+
+# a C2 hostname
+eth\.blockscout\.com</pre></div></div>
+    <p class="note">Patterns are extended regular expressions, one per line, <code>#</code> starts a
+    comment. The structural heuristic — code, a run of 50+ whitespace characters, then more code —
+    runs independently of this list, which is why a variant using an address nobody has seen before
+    is still caught.</p>
+    <p class="note">If you write a pattern that catches something new,
+    <a href="security.html">send it in</a>. A variant nobody else can detect yet is the single most
+    useful thing to contribute.</p>
+  </section>
+
+  <section class="stack" id="state">
+    <span class="eyebrow">State</span>
+    <h2>Where snare keeps things</h2>
+    <p class="lede">Everything lives under <code>$SNARE_HOME</code>, which defaults to
+    <code>~/.snare</code>. Nothing is written outside it except the hooks and shield blocks you
+    explicitly install.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Path</th><th>What is in it</th></tr></thead>
+        <tbody>
+          <tr><td><code>logs/</code></td><td>Scan and guard logs, plus saved reports.</td></tr>
+          <tr><td><code>logs/evidence/</code></td><td>What the guard captured when it killed something — keep this if you plan to report a variant.</td></tr>
+          <tr><td><code>backups/</code></td><td>Bundle backups written before any <code>fix</code> touches a repository.</td></tr>
+          <tr><td><code>work/</code></td><td>Scratch clones used during scanning and history rewriting.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><code>SNARE_ROOT</code> overrides where snare looks for its own library files —
+    useful if you installed it somewhere unusual and the launcher cannot resolve
+    <code>lib/</code>.</p>
+  </section>
+
+  <section class="stack" id="all">
+    <span class="eyebrow">Index</span>
+    <h2>Every page on this site</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Page</th><th>What it covers</th></tr></thead>
+        <tbody>
+          <tr><td><a href="index.html">The threat</a></td><td>Both execution routes, the hidden-payload specimen, and how the C2 address is read off the blockchain.</td></tr>
+          <tr><td><a href="check.html">Check your machine</a></td><td>Four read-only checks, and how to read a clean result honestly.</td></tr>
+          <tr><td><a href="infected.html">If you're infected</a></td><td>Rotate, clean the machine, clean the repositories, notify — in order.</td></tr>
+          <tr><td><a href="install.html">Install</a></td><td>macOS, Linux, Windows, WSL, requirements, and first run.</td></tr>
+          <tr><td><a href="commands.html">Command reference</a></td><td>Every command, grouped by purpose, with its limits.</td></tr>
+          <tr><td><a href="commands.html#limits">Limits</a></td><td>What snare does not do — read this before trusting it.</td></tr>
+          <tr><td><a href="changelog.html">Changelog</a></td><td>Every release, false-clean defects listed first.</td></tr>
+          <tr><td><a href="community.html">Community</a></td><td>Discussions, field reports, and the questions still open.</td></tr>
+          <tr><td><a href="security.html">Report a bug</a></td><td>What to report and how — a false clean above all.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  </div>
+</div>

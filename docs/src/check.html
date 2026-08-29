@@ -1,0 +1,85 @@
+<!--#title: Check your machine — four commands, one minute — snare-->
+<!--#desc: Four checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, and fonts that are not fonts.-->
+<!--#nav: check-->
+<!--#prev: index.html|The threat-->
+<!--#next: infected.html|If you're infected-->
+<div class="wrap page-head">
+  <span class="eyebrow">Check by hand</span>
+  <h1>Four checks you can run right now</h1>
+  <p class="lede">No tools required, nothing to install. Run these against any clone on your
+  machine — the whole thing takes about a minute. Every command is read-only; none of them change
+  anything.</p>
+</div>
+
+<div class="wrap">
+<section class="stack" id="detect">
+  <div class="check">
+    <h3>1 · Is a loader running right now?</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">macOS · Linux</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>ps -eo pid,args | grep -E "node .*-e .*global\[" | grep -v grep</pre></div></div>
+    <p class="verdict">No output means nothing is running. Any output is a live process — kill it.</p>
+  </div>
+
+  <div class="check">
+    <h3>2 · Does any file carry the operator's wallet?</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">working tree</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .</pre></div></div>
+    <div class="panel" style="margin-top:8px"><div class="panel-bar"><span class="label">and the full history — a deleted file still lives in Git</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>git log --all -S "0xa322E5f3" --pickaxe-regex --oneline</pre></div></div>
+  </div>
+
+  <div class="check">
+    <h3>3 · Is a task set to run when you open the folder?</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">editor auto-run</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>grep -rn "folderOpen" .vscode/tasks.json</pre></div></div>
+    <p class="verdict bad">Any hit executes the moment the folder opens. Treat it as hostile until proven otherwise.</p>
+  </div>
+
+  <div class="check">
+    <h3>4 · Are your font files actually fonts?</h3>
+    <div class="panel"><div class="panel-bar"><span class="label">magic bytes</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>head -c 4 public/fonts/*.woff2</pre></div></div>
+    <p class="verdict">Every real font prints <code>wOF2</code>. Spaces mean you are looking at a script.</p>
+  </div>
+
+  <div class="callout">
+    <h3>Look for the long line</h3>
+    <p>The most reliable giveaway is geometry, not content. This finds any file padded out to hide
+    something past the edge of the screen — a hand-written config has no business being 9,000
+    characters wide.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">hidden-payload heuristic</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>awk 'length > 1500 {print FILENAME": line "FNR" ("length" chars)"}' \
+  $(find . -name "*.js" -not -path "*/node_modules/*")</pre></div></div>
+  </div>
+</section>
+
+<section class="stack" id="results">
+  <span class="eyebrow">What the result means</span>
+  <h2>Read the outcome carefully</h2>
+  <div class="next">
+    <a class="next-card urgent" href="infected.html">
+      <span class="step">Something matched</span>
+      <b>Go to the response plan</b>
+      <p>Do not clean the repository first. Rotate your credentials before anything else — the
+      order genuinely matters, and getting it wrong means doing the work twice.</p>
+    </a>
+    <a class="next-card" href="install.html">
+      <span class="step">Nothing matched</span>
+      <b>Install snare to keep it that way</b>
+      <p>These four checks cover one clone at one moment. snare runs them continuously, across
+      every repository you can reach, and blocks a push that would carry a payload out.</p>
+    </a>
+  </div>
+  <div class="callout">
+    <h3>A clean result is narrower than it looks</h3>
+    <p>Checks 2, 3 and 4 test <strong>one clone</strong> — not your other repositories, and not the
+    branches you do not have checked out. Check 1 reports what is running <em>right now</em>; the
+    loader fires when a build runs or an editor opens the folder, does its work, and exits, so a
+    quiet process list alongside an infected repository is the expected result, not a
+    contradiction.</p>
+    <p>These checks also key on <em>this</em> operator's wallet. A variant using a different address
+    passes check 2 and is still caught by the long-line heuristic above — which is why that one
+    matters most.</p>
+  </div>
+</section>
+</div>

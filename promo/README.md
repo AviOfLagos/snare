@@ -37,7 +37,7 @@ cd .. && git commit -am "site: add discussion links" && git push
 Either flag on its own works, so you can add them as each post goes live. The script
 rebuilds `index.html` for you; GitHub Pages redeploys about a minute after the push.
 
-Edit by hand instead if you prefer — the placeholders are marked in `docs/_source.html`:
+Edit by hand instead if you prefer — the placeholders are marked in `docs/src/index.html`:
 
 ```html
 <!-- LINK:tweet:start -->  …  <!-- LINK:tweet:end -->

@@ -1,0 +1,129 @@
+<!--#title: Install snare — macOS, Linux, Windows and WSL — snare-->
+<!--#desc: Install the free open-source scanner in about a minute. Requires bash, git, python3 and the GitHub CLI. It ships no token of its own and uses your own GitHub credentials.-->
+<!--#nav: install-->
+<!--#prev: infected.html|If you're infected-->
+<!--#next: docs.html|Documentation-->
+<div class="wrap page-head">
+  <span class="eyebrow">Install</span>
+  <h1>Pick your machine</h1>
+  <p class="lede">Free and open source under the MIT licence. Requires <code>bash</code>,
+  <code>git</code>, <code>python3</code> and the GitHub CLI. About a minute end to end.</p>
+</div>
+
+<div class="wrap">
+<section class="stack" id="install">
+  <div>
+    <div class="tabs" role="tablist" aria-label="Platform">
+      <button class="tab" role="tab" aria-selected="true"  data-p="mac" id="tab-mac" aria-controls="p-mac">macOS</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="linux" id="tab-linux" aria-controls="p-linux">Linux</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="win" id="tab-win" aria-controls="p-win">Windows</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="wsl" id="tab-wsl" aria-controls="p-wsl">WSL</button>
+    </div>
+
+    <div class="pane" id="p-mac" role="tabpanel" aria-labelledby="tab-mac" tabindex="0">
+      <div class="panel"><div class="panel-bar"><span class="label">macOS · Homebrew</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre>brew install git gh python3 git-filter-repo
+
+git clone https://github.com/AviOfLagos/snare ~/snare
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">The guard runs as a <code>launchd</code> user agent,
+      started automatically at login.</p>
+    </div>
+
+    <div class="pane" id="p-linux" role="tabpanel" aria-labelledby="tab-linux" tabindex="0" hidden>
+      <div class="panel"><div class="panel-bar"><span class="label">Linux</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre># Debian / Ubuntu
+sudo apt install -y git python3
+# gh: github.com/cli/cli/blob/trunk/docs/install_linux.md
+#
+# Fedora:  sudo dnf install -y git python3 gh
+# Arch:    sudo pacman -S git python github-cli
+
+git clone https://github.com/AviOfLagos/snare ~/snare
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">The guard runs as a <code>systemd --user</code> unit.
+      No systemd? Run <code>snare guard run --interval 1</code> yourself under your own supervisor.</p>
+    </div>
+
+    <div class="pane" id="p-win" role="tabpanel" aria-labelledby="tab-win" tabindex="0" hidden>
+      <div class="panel"><div class="panel-bar"><span class="label">Windows · Git Bash</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre>winget install Git.Git GitHub.cli Python.Python.3.12
+
+# then, from Git Bash — not cmd or PowerShell
+git clone https://github.com/AviOfLagos/snare ~/snare
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">snare is written in bash, so it needs Git Bash or WSL.
+      <code>snare guard install</code> registers a logon Scheduled Task.</p>
+    </div>
+
+    <div class="pane" id="p-wsl" role="tabpanel" aria-labelledby="tab-wsl" tabindex="0" hidden>
+      <div class="panel"><div class="panel-bar"><span class="label">Windows Subsystem for Linux</span><div class="bar-actions"></div></div>
+        <div class="scroller"><pre>sudo apt install -y git python3
+git clone https://github.com/AviOfLagos/snare ~/snare
+cd ~/snare && ./install.sh
+gh auth login
+snare doctor</pre></div></div>
+      <p class="note" style="margin-top:9px">The guard only sees processes inside WSL, not Windows
+      itself. If you develop on Windows proper, run snare from Git Bash instead.</p>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Requirement</th><th>Why it is needed</th></tr></thead>
+      <tbody>
+        <tr><td><code>bash</code> <code>git</code> <code>python3</code></td><td>Core. Already present on macOS and most Linux distributions.</td></tr>
+        <tr><td><code>gh</code></td><td>All GitHub access uses <em>your</em> credentials. snare ships no token and stores none.</td></tr>
+        <tr><td><code>git-filter-repo</code></td><td>Optional — only for <code>snare fix --purge-history</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="stack" id="first-run">
+  <span class="eyebrow">After installing</span>
+  <h2>The four commands that matter on day one</h2>
+  <p class="lede">Four verbs. It uses your own GitHub credentials and ships no token of its own.</p>
+  <div class="verbs">
+    <div class="verb">
+      <span class="cmd">snare guard install</span>
+      <h3>Watch this machine</h3>
+      <p>Detects the loader and kills it — process and children — within about a second, then saves
+      the evidence. It only ever kills interpreters, so a shell that merely mentions an indicator is
+      left alone.</p>
+    </div>
+    <div class="verb">
+      <span class="cmd">snare scan github</span>
+      <h3>Scan every repo</h3>
+      <p>Checks every repository you can reach through the API without cloning any of them.
+      <code>snare scan repo .</code> goes deeper on a clone: working tree, every branch, full history.</p>
+    </div>
+    <div class="verb">
+      <span class="cmd">snare fix owner/repo</span>
+      <h3>Clean it out</h3>
+      <p>Writes a backup bundle first, always. Cleans branch tips, or purges the payload from every
+      commit in history. Dry run unless you explicitly say otherwise.</p>
+    </div>
+    <div class="verb">
+      <span class="cmd">snare notify owner/repo</span>
+      <h3>Warn your team</h3>
+      <p>Files a GitHub issue mentioning your collaborators and opens a pre-filled mail draft for
+      each one. It never sends anything — you send from your own account.</p>
+    </div>
+  </div>
+  <div class="callout">
+    <h3>Already had snare installed before 29 August 2026?</h3>
+    <p>Run <code>snare update</code> and then <code>snare selftest</code> before you trust a clean
+    result. Several defects in earlier versions made the scanner report <strong>clean on genuinely
+    infected repositories</strong> — they are listed first in the
+    <a href="changelog.html">changelog</a>, because that is the failure that matters most in a
+    scanner.</p>
+  </div>
+</section>
+</div>
