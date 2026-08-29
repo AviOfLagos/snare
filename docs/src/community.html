@@ -1,0 +1,89 @@
+<!--#title: Community — discussions, field reports and open questions — snare-->
+<!--#desc: Where the conversation about this malware family happens. Comment here and it becomes a GitHub Discussion; comment on GitHub and it shows up here. Plus the two questions nobody has answered yet.-->
+<!--#nav: community-->
+<!--#prev: changelog.html|Changelog-->
+<!--#next: security.html|Report a bug-->
+<div class="wrap page-head">
+  <span class="eyebrow">Community</span>
+  <h1>One conversation, in two places</h1>
+  <p class="lede">Comments on this page are <strong>GitHub Discussions</strong>. Post here and the
+  thread appears on the repository; reply on GitHub and it appears here. There is no separate
+  account, no second inbox, and nothing to moderate twice.</p>
+</div>
+
+<div class="wrap">
+<section class="stack" id="where">
+  <span class="eyebrow">Where things live</span>
+  <h2>Pick the room that fits</h2>
+  <div class="reports">
+    <a class="report-link" href="https://github.com/AviOfLagos/snare/discussions">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></span>
+      <span><b>Discussions</b><span>Open questions, ideas, show and tell. Start a thread with a GitHub account.</span></span>
+    </a>
+    <a class="report-link" href="https://github.com/AviOfLagos/snare/discussions/categories/q-a">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 6a2 2 0 1 1 2.6 1.9c-.4.15-.6.5-.6.9v.7" stroke-linecap="round"/><circle cx="8" cy="12.2" r=".8" fill="currentColor" stroke="none"/></svg></span>
+      <span><b>Q&amp;A</b><span>"Is this thing in my repo?" — answerable questions, with accepted answers.</span></span>
+    </a>
+    <a class="report-link" href="https://github.com/AviOfLagos/snare/issues/1">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 4.5v4.2M8 11.4h.01" stroke-linecap="round"/><circle cx="8" cy="8" r="6.4"/></svg></span>
+      <span><b>Field reports</b><span>What you saw, what it cost, any variant you found. Redact tokens first.</span></span>
+    </a>
+    <a class="report-link" href="https://github.com/AviOfLagos/snare/issues/new">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke-linecap="round"/></svg></span>
+      <span><b>Bugs and variants</b><span>A false clean is the one we most want to hear about.</span></span>
+    </a>
+  </div>
+</section>
+
+<section class="stack" id="open">
+  <span class="eyebrow">Still unanswered</span>
+  <h2>The two questions nobody has answered</h2>
+  <p class="lede">These are not rhetorical. Nine infections across five contributor identities over
+  two years is not one laptop, and no delivery mechanism has been established.</p>
+  <ol class="chain">
+    <li><b>How does this family actually reach developer machines?</b><span>Every payload seen so
+    far was a <em>modification</em> of an already-clean config, never a fresh file — which rules
+    out a contaminated template as the whole story. A shared upstream source (a scaffold, a
+    <code>create-*</code> command, a downloaded theme, an editor extension) is the leading theory
+    and remains unproven. If you can say what you scaffolded an infected project with, that is the
+    most useful thing you can contribute.</span></li>
+    <li><b>Can a defence propagate the way the infection does?</b><span>Without becoming a dropper
+    itself. This is an open design question, and a genuinely uncomfortable one.</span></li>
+  </ol>
+  <div class="callout">
+    <h3>Before you post details</h3>
+    <p>Redact tokens, keys, internal hostnames and anything that identifies a client. You do not
+    have to name an employer — "a fintech I contract for" is a perfectly good data point. If you
+    would rather not post publicly at all, <a href="security.html">open an issue saying so without
+    the specifics</a> and we will find another way.</p>
+  </div>
+</section>
+
+<section class="stack" id="comments">
+  <span class="eyebrow">Comments</span>
+  <h2>Say something here</h2>
+  <p class="lede">This thread is a GitHub Discussion. Signing in with GitHub is only needed to
+  post — reading requires nothing.</p>
+
+  <noscript>
+    <div class="callout">
+      <h3>Comments need JavaScript</h3>
+      <p>The thread lives on GitHub either way —
+      <a href="https://github.com/AviOfLagos/snare/discussions">read and post it there</a>.</p>
+    </div>
+  </noscript>
+
+  <div id="giscus-mount" class="giscus-mount"
+       data-repo="AviOfLagos/snare"
+       data-repo-id="R_kgDOUDI78A"
+       data-category="General"
+       data-category-id="DIC_kwDOUDI78M4DEUOy">
+    <p class="note" id="giscus-fallback">Loading the discussion thread…</p>
+  </div>
+
+  <p class="note">Comments are powered by <a href="https://giscus.app">giscus</a>, which stores
+  every comment as a GitHub Discussion on this repository. It is the only third-party code on this
+  site, and it is loaded on this page alone — never on the pages that carry commands you might
+  paste into a shell.</p>
+</section>
+</div>

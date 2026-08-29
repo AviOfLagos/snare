@@ -5,7 +5,8 @@
 #   ./set-links.sh --devto https://dev.to/you/slug
 #   ./set-links.sh --tweet URL --devto URL
 #
-# Rebuilds index.html afterwards. Then: git commit -am "links" && git push
+# Edits the markers in src/index.html, then rebuilds the whole site.
+# Afterwards: git commit -am "links" && git push
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -32,7 +33,7 @@ swap(){ # $1=marker $2=url $3=icon-path $4=title $5=subtitle
   python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
 import re,sys
 marker,url,icon,title,sub = sys.argv[1:6]
-p='_source.html'; s=open(p).read()
+p='src/index.html'; s=open(p).read()
 block = (f'<!-- LINK:{marker}:start -->\n'
          f'    <a class="report-link" href="{url}">\n'
          f'      <span class="ic"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">{icon}</svg></span>\n'
