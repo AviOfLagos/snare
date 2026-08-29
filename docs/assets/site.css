@@ -535,3 +535,93 @@ footer{padding:52px 0 64px;border-top:1px solid var(--hair);color:var(--muted);f
    the loading/fallback note from sitting flush against the heading. */
 .giscus-mount{min-height:150px;padding-top:4px}
 .giscus-mount iframe{width:100%;border:0;color-scheme:normal}
+
+/* ==========================================================================
+   MOTION
+   Cross-document view transitions plus the small feedback animations.
+   Everything here is a progressive enhancement: a browser without view
+   transitions just navigates, and reduced-motion turns the lot off.
+   ========================================================================== */
+
+@view-transition { navigation: auto }
+@media (prefers-reduced-motion:reduce){
+  @view-transition { navigation: none }
+}
+
+/* The chrome should hold still while the content changes underneath it.
+   Naming these lifts them out of the root snapshot, so the nav and footer
+   persist across the navigation instead of cross-fading with everything else. */
+.nav{view-transition-name:site-nav}
+footer{view-transition-name:site-footer}
+
+::view-transition-old(root){animation:vt-out .16s ease-in both}
+::view-transition-new(root){animation:vt-in .26s cubic-bezier(.22,.61,.36,1) both}
+@keyframes vt-out{to{opacity:0;transform:translateY(-4px)}}
+@keyframes vt-in{from{opacity:0;transform:translateY(8px)}}
+
+/* the nav is sticky; keep it pinned rather than letting it be animated */
+::view-transition-group(site-nav){animation-duration:0s}
+
+/* ---------- micro-interactions ---------- */
+@media (prefers-reduced-motion:no-preference){
+
+  /* Nav underline grows from the left. Desktop only — below 861px the drawer
+     replaces this with a dot, and a full-width bar there would be wrong. */
+  @media (min-width:861px){
+    .nav-links a:not(.nav-cta)::after{
+      content:"";position:absolute;left:0;right:0;bottom:-12px;height:2px;
+      background:var(--accent);transform:scaleX(0);transform-origin:left;
+      transition:transform .22s cubic-bezier(.22,.61,.36,1);
+    }
+    .nav-links a:not(.nav-cta):hover::after,
+    .nav-links a[aria-current="page"]:not(.nav-cta)::after{transform:scaleX(1)}
+  }
+
+  /* everything pressable acknowledges the press */
+  .btn-lg,.btn,.tab,.icon-btn,.nav-cta{transition:transform .12s ease,opacity .15s,border-color .15s,color .15s}
+  .btn-lg:active,.btn:active,.tab:active,.icon-btn:active,.nav-cta:active{transform:translateY(1px)}
+
+  /* cards lift, and the ones that lead somewhere nudge their arrow */
+  .report-link,.next-card,.pager a{transition:border-color .15s,transform .18s cubic-bezier(.22,.61,.36,1)}
+  .report-link:hover{transform:translateY(-1px)}
+  .pager a .dir{transition:transform .18s cubic-bezier(.22,.61,.36,1);display:inline-block}
+  .pager a:hover .dir{transform:translateX(-3px)}
+  .pager a.next-a:hover .dir{transform:translateX(3px)}
+
+  /* the copy button's tick draws itself in */
+  .btn.done svg polyline{
+    stroke-dasharray:18;stroke-dashoffset:18;
+    animation:tick .32s cubic-bezier(.22,.61,.36,1) forwards;
+  }
+  @keyframes tick{to{stroke-dashoffset:0}}
+
+  /* theme toggle: the icon turns as it swaps */
+  .theme-toggle svg{transition:transform .3s cubic-bezier(.22,.61,.36,1)}
+  .theme-toggle:hover svg{transform:rotate(25deg)}
+
+  /* hamburger folds into a cross */
+  .nav-toggle line{
+    transition:transform .22s cubic-bezier(.22,.61,.36,1),opacity .14s;
+    transform-origin:center;
+  }
+  .nav-toggle[aria-expanded="true"] .bar-top{transform:translateY(6px) rotate(45deg)}
+  .nav-toggle[aria-expanded="true"] .bar-mid{opacity:0}
+  .nav-toggle[aria-expanded="true"] .bar-bot{transform:translateY(-6px) rotate(-45deg)}
+
+  /* a switched tab panel fades in rather than snapping */
+  .pane:not([hidden]){animation:pane-in .22s ease both}
+  @keyframes pane-in{from{opacity:0;transform:translateY(3px)}}
+
+  /* the jump bar's active chip settles rather than jumping */
+  .jump a{transition:border-color .15s,color .15s,background-color .15s}
+}
+
+/* motion-free fallbacks for the states above that carry meaning */
+@media (prefers-reduced-motion:reduce){
+  @media (min-width:861px){
+    .nav-links a[aria-current="page"]:not(.nav-cta)::after{
+      content:"";position:absolute;left:0;right:0;bottom:-12px;height:2px;background:var(--accent);
+    }
+  }
+  .nav-toggle[aria-expanded="true"] .bar-mid{opacity:0}
+}
