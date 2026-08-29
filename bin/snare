@@ -63,10 +63,13 @@ ${C_BLD}TRACK${C_OFF}
   snare guard install           run it at login (kills the loader within ~1s)
   snare guard scan              one-shot check of this machine
   snare guard log               follow the log
+  snare guard start | stop      restart it after an update
   snare guard uninstall
 
 ${C_BLD}FIND${C_OFF}
+  snare scan                    scan the current directory
   snare scan repo [path]        deep-scan one clone: tree, all branches, history
+  snare scan repo [path] --new  only findings that are not in the baseline
   snare scan github             every repo you can reach, via API (no cloning)
   snare scan github --mine      only repos you own
   snare scan github --all-branches
@@ -85,6 +88,7 @@ ${C_BLD}WATCH${C_OFF}
 ${C_BLD}PREVENT${C_OFF}
   snare shield install          scan before npm/pnpm/yarn/bun/git clone runs anything
   snare shield status | uninstall
+  snare shield check [path]     the fast check on its own, without installing
   snare hook install            block a push that carries a hidden payload
   snare hook install --with-pre-commit
   snare hook status | uninstall
@@ -105,6 +109,10 @@ ${C_BLD}INFORM${C_OFF}
   snare notify <owner/repo>            list collaborators + preview
   snare notify <owner/repo> --issue    file a GitHub issue @-mentioning them
   snare notify <owner/repo> --mail     open a pre-filled mail draft per person
+
+${C_BLD}HELP${C_OFF}
+  snare help                    this list
+  snare version                 version, and whether a newer one exists
 
 ${C_BLD}AUTH${C_OFF}
   snare uses ${C_BLD}your own${C_OFF} GitHub credentials. No token ships with this tool.

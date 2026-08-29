@@ -38,6 +38,21 @@ jobs:
           shellcheck -S warning -s bash /tmp/snippet.sh
           echo "snippet is valid"
 
+      # help drifted: eight accepted subcommands were undocumented, including
+      # `scan repo --new`, the only way to use the baseline feature help does
+      # advertise. Fail the build if a dispatched command is missing from help.
+      - name: Help documents every command
+        run: |
+          chmod +x bin/snare
+          help_out="$(./bin/snare help 2>&1)"
+          missing=0
+          for c in guard scan fix notify doctor update selftest report schedule \
+                   baseline hook shield ci rotate version help; do
+            echo "$help_out" | grep -q "snare $c" || { echo "::error::'$c' is dispatched but absent from snare help"; missing=1; }
+          done
+          [ "$missing" = 0 ] && echo "help covers every top-level command"
+          exit $missing
+
       - name: Detection works (selftest)
         run: |
           chmod +x bin/snare
