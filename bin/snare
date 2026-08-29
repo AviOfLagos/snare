@@ -3,7 +3,7 @@
 # https://github.com/  •  MIT
 set -uo pipefail
 
-SNARE_VERSION="1.0.0"
+SNARE_VERSION="1.1.0"
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so
 # BASH_SOURCE is the link, not the real file. (readlink -f is not portable.)
 _src="${BASH_SOURCE[0]}"
@@ -181,7 +181,10 @@ main(){
     shield) cmd_shield "$@" ;;
     rotate) cmd_rotate "$@" ;;
     selftest) cmd_selftest "$@" ;;
-    version|--version|-v) echo "snare $SNARE_VERSION"; snare_update_hint ;;
+    version|--version|-v)
+      _sha="$(git -C "$_dir" rev-parse --short HEAD 2>/dev/null)"
+      if [ -n "$_sha" ]; then echo "snare $SNARE_VERSION ($_sha)"; else echo "snare $SNARE_VERSION"; fi
+      snare_update_hint ;;
     help|--help|-h) usage ;;
     *) red "unknown command: $c"; echo; usage; exit 2 ;;
   esac
