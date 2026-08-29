@@ -214,20 +214,68 @@ UNIT
 
 # ---- Windows (Git Bash): Scheduled Task ----------------------------------
 guard_svc_schtasks(){
-  local name="snare-guard" bash_exe
+  local name="snare-guard" bash_exe snare_sh err rc
   bash_exe="$(command -v bash)"
+  snare_sh="$SNARE_ROOT/bin/snare"
+
+  # schtasks.exe is a Windows program: it needs a Windows path for the
+  # executable. Handing it an MSYS path like /usr/bin/bash fails, and the old
+  # code discarded stderr so the user only ever saw "could not create the
+  # scheduled task" with nothing to act on.
+  if command -v cygpath >/dev/null 2>&1; then
+    bash_exe="$(cygpath -w "$bash_exe" 2>/dev/null || command -v bash)"
+  fi
+  # MSYS_NO_PATHCONV stops MSYS rewriting /TN and friends into paths.
+  export MSYS_NO_PATHCONV=1
+
   case "$1" in
     install)
-      schtasks //Create //TN "$name" //SC ONLOGON //RL LIMITED //F \
-        //TR "\"$bash_exe\" -lc 'snare guard run --interval 1'" >/dev/null 2>&1 \
-        && grn "scheduled task '$name' created (runs at logon)" || red "could not create the scheduled task"
-      schtasks //Run //TN "$name" >/dev/null 2>&1 && grn "started" ;;
-    uninstall) schtasks //Delete //TN "$name" //F >/dev/null 2>&1 && ylw "guard uninstalled" ;;
-    start)     schtasks //Run  //TN "$name" >/dev/null 2>&1 && grn "started" ;;
-    stop)      schtasks //End  //TN "$name" >/dev/null 2>&1 && ylw "stopped" ;;
+      err="$(schtasks /Create /TN "$name" /SC ONLOGON /RL LIMITED /F \
+             /TR "\"$bash_exe\" -c \"'$snare_sh' guard run --interval 1\"" 2>&1)"; rc=$?
+      if [ "$rc" = 0 ]; then
+        grn "scheduled task '$name' created (runs at logon)"
+        schtasks /Run /TN "$name" >/dev/null 2>&1 && grn "started"
+        return 0
+      fi
+      red "could not create the scheduled task"
+      [ -n "$err" ] && echo "$err" | sed 's/^/    /'
+      echo
+      # A Startup-folder shortcut needs no privileges and no Task Scheduler.
+      ylw "  Falling back to a Startup entry (no admin rights needed)."
+      local startup
+      startup="$(cygpath -u "$APPDATA" 2>/dev/null)/Microsoft/Windows/Start Menu/Programs/Startup"
+      if [ -d "$startup" ]; then
+        cat > "$startup/snare-guard.bat" <<BAT
+@echo off
+start "" /min "$bash_exe" -c "'$snare_sh' guard run --interval 1"
+BAT
+        grn "  wrote $startup/snare-guard.bat"
+        dim "  it will start at your next logon; to start it now:"
+        dim "      snare guard run --interval 1 &"
+        return 0
+      fi
+      red "  could not find your Startup folder either."
+      dim "  Run the guard manually in a spare Git Bash window:"
+      dim "      snare guard run --interval 1"
+      dim "  Or scan on demand:  snare guard scan"
+      return 1 ;;
+    uninstall)
+      schtasks /Delete /TN "$name" /F >/dev/null 2>&1 && ylw "guard uninstalled"
+      local startup
+      startup="$(cygpath -u "$APPDATA" 2>/dev/null)/Microsoft/Windows/Start Menu/Programs/Startup"
+      [ -f "$startup/snare-guard.bat" ] && { rm -f "$startup/snare-guard.bat"; ylw "startup entry removed"; }
+      return 0 ;;
+    start)     schtasks /Run  /TN "$name" >/dev/null 2>&1 && grn "started" || \
+                 dim "start it manually: snare guard run --interval 1 &" ;;
+    stop)      schtasks /End  /TN "$name" >/dev/null 2>&1 && ylw "stopped" ;;
     status)
-      if schtasks //Query //TN "$name" >/dev/null 2>&1; then grn "scheduled task '$name' registered"
-      else ylw "guard not registered — 'snare guard install'"; fi
+      if schtasks /Query /TN "$name" >/dev/null 2>&1; then grn "scheduled task '$name' registered"
+      else
+        local startup
+        startup="$(cygpath -u "$APPDATA" 2>/dev/null)/Microsoft/Windows/Start Menu/Programs/Startup"
+        if [ -f "$startup/snare-guard.bat" ]; then grn "startup entry registered"
+        else ylw "guard not registered — 'snare guard install'"; fi
+      fi
       _guard_common_status ;;
   esac
 }
