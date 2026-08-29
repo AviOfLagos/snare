@@ -204,8 +204,26 @@ cmd_scan_github(){
     dim "History-only infections are invisible here — run: snare scan repo <clone>"
   else
     red "$n infected repo(s):"; sed 's/^/  - /' "$flagged"
-    echo; echo "Next:  snare fix <owner/repo>       (dry run)"
-    echo "       snare notify <owner/repo>    (tell collaborators)"
+    echo
+    # Order matters and the old order was wrong. It led with "fix", which is
+    # the LAST thing to do: credentials are this family's objective, and a
+    # still-infected machine re-injects into whatever you just cleaned.
+    red "  Do these in order — cleaning the repos first is wasted work."
+    echo
+    echo "  1. Rotate your credentials.  snare rotate"
+    dim  "     Stealing them is the point; removing the payload does not"
+    dim  "     un-steal a token. npm write tokens first."
+    echo "  2. Check THIS machine.       snare doctor    and    snare guard scan"
+    if [ "$n" -ge 3 ]; then
+      dim  "     $n infected repositories points at the machine that pushed to"
+      dim  "     them, not at $n separate accidents. Clean it before step 3, or"
+      dim  "     it will re-inject into everything you just fixed."
+    else
+      dim  "     This family injects from an already-infected machine."
+    fi
+    echo "  3. Then clean the repos.     snare fix <owner/repo>       (dry run)"
+    echo "                               snare fix --all             (dry run)"
+    echo "  4. Then tell collaborators.  snare notify <owner/repo>"
   fi
   echo "report: $report"
 }
