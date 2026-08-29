@@ -205,6 +205,8 @@
 
   /* ------------------------------------------ copy buttons on code panels */
   var ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="9" rx="1.5"/><path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1"/></svg>';
+  // swapped in on success — the polyline is what the tick animation draws
+  var TICK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3,8.5 6.5,12 13,4.5"/></svg>';
 
   function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
@@ -247,13 +249,13 @@
     b.addEventListener("click", function () {
       copyText(pre.innerText).then(function () {
         b.classList.add("done");
-        b.querySelector("span").textContent = "copied";
+        b.innerHTML = TICK + "<span>copied</span>";
         setTimeout(function () {
           b.classList.remove("done");
-          b.querySelector("span").textContent = "copy";
+          b.innerHTML = ICON + "<span>copy</span>";
         }, 1600);
       }).catch(function () {
-        b.querySelector("span").textContent = "select all";
+        b.innerHTML = ICON + "<span>select all</span>";
         var r = document.createRange(); r.selectNodeContents(pre);
         var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
       });
