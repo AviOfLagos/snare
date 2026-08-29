@@ -17,11 +17,42 @@ snare_remote_version(){
     | grep -m1 '^SNARE_VERSION=' | cut -d'"' -f2
 }
 
+# Is $1 strictly newer than $2? Used so an OLDER remote never triggers an
+# "update available" nudge — comparing for inequality once told a 1.1.0 user
+# that 1.0.0 was newer.
+ver_gt(){
+  [ "$1" = "$2" ] && return 1
+  [ "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | head -1)" = "$2" ]
+}
+
+# How many commits is this checkout behind its upstream? Empty if unknown.
+# Version strings alone are not enough: 1.0.0 stood still for 33 commits, so
+# 'update --check' told people carrying known-broken code that they were up to
+# date. Commit distance is the honest signal between releases.
+snare_commits_behind(){
+  [ -d "$SNARE_ROOT/.git" ] || return 1
+  local br; br="$(git -C "$SNARE_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  [ -z "$br" ] || [ "$br" = HEAD ] && br=main
+  # A local branch with no upstream (a work branch, a detached checkout) has
+  # nothing to compare against; fall back to main rather than reporting
+  # "not a git checkout", which would be false.
+  if ! git -C "$SNARE_ROOT" fetch --quiet origin "$br" 2>/dev/null; then
+    git -C "$SNARE_ROOT" fetch --quiet origin main 2>/dev/null || return 1
+    br=main
+  fi
+  git -C "$SNARE_ROOT" rev-list --count "HEAD..origin/$br" 2>/dev/null
+}
+
 # Cheap, quiet check used by `snare version`. Prints a nudge or nothing.
 snare_update_hint(){
+  local behind; behind="$(snare_commits_behind 2>/dev/null)"
+  if [ -n "$behind" ] && [ "$behind" -gt 0 ] 2>/dev/null; then
+    ylw "  $behind commit(s) behind — run: snare update"
+    return 0
+  fi
   local r; r="$(snare_remote_version)"
   [ -z "$r" ] && return 0
-  [ "$r" = "$SNARE_VERSION" ] && return 0
+  ver_gt "$r" "$SNARE_VERSION" || return 0
   ylw "  a newer version is available: $r (you have $SNARE_VERSION)"
   dim "  run: snare update"
 }
@@ -41,10 +72,30 @@ cmd_update(){
   echo "  version: $SNARE_VERSION"
 
   if [ "$check" = 1 ]; then
+    # Commit distance first — it catches drift that a static version string
+    # cannot. A version-only comparison once reported "up to date" to someone
+    # 14 commits behind, still carrying known detection bugs.
+    local behind; behind="$(snare_commits_behind 2>/dev/null)"
+    if [ -n "$behind" ]; then
+      if [ "$behind" -gt 0 ] 2>/dev/null; then
+        ylw "  $behind commit(s) behind origin"
+        local r2; r2="$(snare_remote_version)"
+        [ -n "$r2" ] && ver_gt "$r2" "$SNARE_VERSION" && echo "  latest release: $r2"
+        dim "  run: snare update"
+      else
+        grn "  up to date ($SNARE_VERSION, $(git -C "$SNARE_ROOT" rev-parse --short HEAD 2>/dev/null))"
+      fi
+      return 0
+    fi
+    # Not a git checkout: fall back to the version string.
     local r; r="$(snare_remote_version)"
     if [ -z "$r" ]; then ylw "  could not reach GitHub"; return 1; fi
-    if [ "$r" = "$SNARE_VERSION" ]; then grn "  up to date ($r)"; else
-      ylw "  update available: $r"; dim "  run: snare update"; fi
+    if ver_gt "$r" "$SNARE_VERSION"; then
+      ylw "  update available: $r"; dim "  run: snare update"
+    else
+      grn "  up to date ($SNARE_VERSION)"
+      dim "  (comparing release versions only — no upstream to diff against)"
+    fi
     return 0
   fi
 
