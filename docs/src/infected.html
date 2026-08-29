@@ -12,6 +12,30 @@
 </div>
 
 <div class="wrap">
+<section class="stack" id="guided">
+  <span class="eyebrow">The short way</span>
+  <h2>One command walks you through all of it</h2>
+  <p class="lede">Everything on this page, asked one question at a time, in the right order.
+  Nothing is changed or pushed without you saying so, and it saves your place if you stop.</p>
+  <div class="panel"><div class="panel-bar"><span class="label">Start here</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>snare respond</pre></div></div>
+  <div class="callout">
+    <h3>What it will and will not do</h3>
+    <p>It revokes what it safely can — npm tokens are one keypress, and they are the ones that
+    matter most — opens your browser at the pages it cannot act on, and asks before every push.
+    Anything that writes to a repository defaults to <strong>no</strong>. The destructive choice,
+    whether to purge history, is asked <strong>once</strong> rather than per repository, so a
+    rhythm of "yes" cannot carry you through it by accident.</p>
+    <p>It will not pretend to have rotated your credentials for you. It asks, and if you say no it
+    carries on — but it tells you again before anything is pushed, and again at the end. A step
+    that blocks you is a step you abandon.</p>
+    <p><code>snare respond --status</code> shows where you got to.
+    <code>snare respond --reset</code> starts again.</p>
+  </div>
+  <p class="note">The rest of this page is the same sequence done by hand. Read it if you would
+  rather drive, or if you want to know why the order is what it is.</p>
+</section>
+
 <section class="stack" id="order">
   <span class="eyebrow">The order</span>
   <h2>Four steps, and the sequence is the point</h2>

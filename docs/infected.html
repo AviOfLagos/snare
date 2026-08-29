@@ -26,9 +26,31 @@
 <link rel="expect" href="#main" blocking="render">
 <script>/* apply a pinned theme before first paint so the page never flashes */
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"If you're infected","item":"https://avioflagos.github.io/snare/infected.html"}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"HowTo",
+ "name":"Remove a committed supply-chain dropper from your repositories",
+ "description":"Rotate credentials first, then clean the machine you push from, then the repositories, then tell your collaborators. Cleaning repositories first is wasted work on an infected machine.","url":"https://avioflagos.github.io/snare/infected.html",
+ "totalTime":"PT30M",
+ "tool":[{"@type":"HowToTool","name":"snare"}],
+ "step":[
+  {"@type":"HowToStep","position":1,"name":"Rotate your credentials",
+   "text":"Stealing credentials is the objective; removing the payload does not un-steal a token. Revoke npm write tokens first, then GitHub tokens, SSH keys and cloud keys.","url":"https://avioflagos.github.io/snare/infected.html#rotate"},
+  {"@type":"HowToStep","position":2,"name":"Clean the machine you push from",
+   "text":"This family injects into commits as they leave an already-infected machine, so cleaning a repository first is wasted work.","url":"https://avioflagos.github.io/snare/infected.html#machine"},
+  {"@type":"HowToStep","position":3,"name":"Clean the repositories",
+   "text":"snare fix is a dry run by default and always backs up first. Purging history rewrites every commit SHA, so every clone must be re-cloned rather than pulled.","url":"https://avioflagos.github.io/snare/infected.html#repos"},
+  {"@type":"HowToStep","position":4,"name":"Tell your collaborators",
+   "text":"They may be infected from the same source, and a rewritten history breaks their clones without explanation.","url":"https://avioflagos.github.io/snare/infected.html#notify"}]}
+</script>
 </head>
 <body data-page="infected">
 <a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -53,6 +75,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 <div class="wrap page-head">
@@ -64,6 +87,30 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 </div>
 
 <div class="wrap">
+<section class="stack" id="guided">
+  <span class="eyebrow">The short way</span>
+  <h2>One command walks you through all of it</h2>
+  <p class="lede">Everything on this page, asked one question at a time, in the right order.
+  Nothing is changed or pushed without you saying so, and it saves your place if you stop.</p>
+  <div class="panel"><div class="panel-bar"><span class="label">Start here</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>snare respond</pre></div></div>
+  <div class="callout">
+    <h3>What it will and will not do</h3>
+    <p>It revokes what it safely can — npm tokens are one keypress, and they are the ones that
+    matter most — opens your browser at the pages it cannot act on, and asks before every push.
+    Anything that writes to a repository defaults to <strong>no</strong>. The destructive choice,
+    whether to purge history, is asked <strong>once</strong> rather than per repository, so a
+    rhythm of "yes" cannot carry you through it by accident.</p>
+    <p>It will not pretend to have rotated your credentials for you. It asks, and if you say no it
+    carries on — but it tells you again before anything is pushed, and again at the end. A step
+    that blocks you is a step you abandon.</p>
+    <p><code>snare respond --status</code> shows where you got to.
+    <code>snare respond --reset</code> starts again.</p>
+  </div>
+  <p class="note">The rest of this page is the same sequence done by hand. Read it if you would
+  rather drive, or if you want to know why the order is what it is.</p>
+</section>
+
 <section class="stack" id="order">
   <span class="eyebrow">The order</span>
   <h2>Four steps, and the sequence is the point</h2>

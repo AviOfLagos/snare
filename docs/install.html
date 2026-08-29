@@ -26,9 +26,23 @@
 <link rel="expect" href="#main" blocking="render">
 <script>/* apply a pinned theme before first paint so the page never flashes */
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"Install snare","item":"https://avioflagos.github.io/snare/install.html"}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"snare",
+ "applicationCategory":"SecurityApplication","operatingSystem":"macOS, Linux, Windows, WSL",
+ "softwareVersion":"1.1.0","url":"https://avioflagos.github.io/snare/install.html","codeRepository":"https://github.com/AviOfLagos/snare",
+ "license":"https://opensource.org/licenses/MIT",
+ "description":"Install the free open-source scanner in about a minute. Requires bash, git, python3 and the GitHub CLI. It ships no token of its own and uses your own GitHub credentials.",
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
 </head>
 <body data-page="install">
 <a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -53,6 +67,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 <div class="wrap page-head">
@@ -168,6 +183,56 @@ snare doctor</pre></div></div>
       <p>Files a GitHub issue mentioning your collaborators and opens a pre-filled mail draft for
       each one. It never sends anything — you send from your own account.</p>
     </div>
+  </div>
+  <div class="callout">
+    <h3>Not sure where to start?</h3>
+    <p>Run <code>snare respond</code>. It walks you through the whole thing — check the machine,
+    rotate credentials, find what is infected, clean it, tell your collaborators — one question at
+    a time, in the order that actually works. Nothing is changed without you saying so, and it
+    remembers where you got to if you stop.</p>
+  </div>
+  <div class="callout">
+    <h3>Would you rather your AI assistant did this?</h3>
+    <p>Paste the prompt below into Claude Code, Cursor, Copilot or any assistant that can run
+    commands. It installs snare, checks your machine, and reports back — and it is written to stop
+    and ask you before anything is changed.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">Copy this</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>Please help me check my machine and my repositories for the supply-chain
+malware described at https://avioflagos.github.io/snare/
+
+1. Clone and install the scanner:
+     git clone https://github.com/AviOfLagos/snare ~/snare
+     cd ~/snare &amp;&amp; ./install.sh
+   It needs bash, git, python3 and the GitHub CLI (gh). Install whatever is
+   missing for my platform first.
+
+2. Confirm the scanner itself works before trusting any result:
+     snare selftest
+   If that fails, stop and tell me — a scanner whose detection is broken
+   reports "clean" on infected repositories.
+
+3. Check this machine and show me the output:
+     snare doctor
+     snare guard scan
+
+4. Scan my repositories and show me exactly what was found:
+     snare scan repo .        # the repo I am in: working tree, branches, history
+     snare scan github        # every repo my gh account can reach
+
+Important, please follow these:
+- Do NOT run "snare fix", "--push" or "--purge-history" without asking me
+  first and showing me what would change. They rewrite git history.
+- If anything is found, tell me to rotate my credentials BEFORE cleaning any
+  repository. Stealing credentials is what this malware is for, and cleaning
+  a repo from an infected machine just lets it re-inject.
+- "snare guard scan" saying "clean" does not mean I was never infected. The
+  loader runs when a build runs or an editor opens the folder, then exits.
+- Explain what you find in plain language, and tell me what you are unsure
+  about rather than guessing.</pre></div></div>
+    <p class="note">The prompt deliberately forbids the destructive commands. If your assistant
+    offers to run <code>snare fix --purge-history</code> unprompted, say no and read
+    <a href="infected.html">the walkthrough</a> first — that rewrites every commit and breaks
+    every existing clone.</p>
   </div>
   <div class="callout">
     <h3>Already had snare installed before 29 August 2026?</h3>

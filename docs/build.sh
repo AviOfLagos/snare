@@ -37,6 +37,8 @@ build_page(){
   title="$(meta title "$src")"
   desc="$(meta desc "$src")"
   navkey="$(meta nav "$src")"
+  # short label for breadcrumbs: the title up to its first em dash
+  crumb="$(printf '%s' "$title" | sed 's/ *—.*//')"
   prev="$(meta prev "$src")"
   next="$(meta next "$src")"
 
@@ -72,6 +74,69 @@ build_page(){
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 HEAD
 
+    # Breadcrumbs on every page: gives a crawler the site hierarchy, and is
+    # what produces the path shown under a search result.
+    if [ "$out" != index.html ]; then
+      cat <<CRUMB
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"$SITE"},
+ {"@type":"ListItem","position":2,"name":"$crumb","item":"$SITE$out"}]}
+</script>
+CRUMB
+    fi
+
+    # Page-specific structured data. A HowTo on the response walkthrough is the
+    # one that matters: "how do I remove this malware" is what someone types
+    # mid-incident, and HowTo is the type that answers it.
+    case "$out" in
+      infected.html)
+        cat <<HOWTO
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"HowTo",
+ "name":"Remove a committed supply-chain dropper from your repositories",
+ "description":"$desc","url":"$SITE$out",
+ "totalTime":"PT30M",
+ "tool":[{"@type":"HowToTool","name":"snare"}],
+ "step":[
+  {"@type":"HowToStep","position":1,"name":"Rotate your credentials",
+   "text":"Stealing credentials is the objective; removing the payload does not un-steal a token. Revoke npm write tokens first, then GitHub tokens, SSH keys and cloud keys.","url":"$SITE$out#rotate"},
+  {"@type":"HowToStep","position":2,"name":"Clean the machine you push from",
+   "text":"This family injects into commits as they leave an already-infected machine, so cleaning a repository first is wasted work.","url":"$SITE$out#machine"},
+  {"@type":"HowToStep","position":3,"name":"Clean the repositories",
+   "text":"snare fix is a dry run by default and always backs up first. Purging history rewrites every commit SHA, so every clone must be re-cloned rather than pulled.","url":"$SITE$out#repos"},
+  {"@type":"HowToStep","position":4,"name":"Tell your collaborators",
+   "text":"They may be infected from the same source, and a rewritten history breaks their clones without explanation.","url":"$SITE$out#notify"}]}
+</script>
+HOWTO
+        ;;
+      install.html)
+        cat <<INST
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"snare",
+ "applicationCategory":"SecurityApplication","operatingSystem":"macOS, Linux, Windows, WSL",
+ "softwareVersion":"$VERSION","url":"$SITE$out","codeRepository":"$REPO",
+ "license":"https://opensource.org/licenses/MIT",
+ "description":"$desc",
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
+INST
+        ;;
+      check.html)
+        cat <<FAQ
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+ {"@type":"Question","name":"How do I know if my machine is infected with this malware?",
+  "acceptedAnswer":{"@type":"Answer","text":"Look for a node process running inline code with obfuscated globals, any file carrying the operator's wallet address, a .vscode/tasks.json task set to runOn folderOpen, and font files whose first four bytes are not a real font magic. A genuine .woff2 begins with wOF2."}},
+ {"@type":"Question","name":"Does npm audit detect this?",
+  "acceptedAnswer":{"@type":"Answer","text":"No. The dropper is committed into the repository itself rather than pulled from the registry, so there is no malicious dependency for npm audit, the lockfile or Dependabot to report."}},
+ {"@type":"Question","name":"My process check came back clean. Am I safe?",
+  "acceptedAnswer":{"@type":"Answer","text":"Not necessarily. The loader runs when a build runs or an editor opens the folder, then exits. A clean process check alongside infected repositories is the expected result, not a contradiction."}}]}
+</script>
+FAQ
+        ;;
+    esac
+
     # keyword + structured data only on the entry page
     if [ "$out" = index.html ]; then
       cat <<'KW'
@@ -102,6 +167,7 @@ JSONLD
 
     # ---- nav ----
     cat <<'NAVTOP'
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -129,6 +195,7 @@ NAVTOP
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 NAVBOT
@@ -208,15 +275,100 @@ done
       infected.html|commands.html|community.html) loc="$SITE$page"; pri="0.8" ;;
       *) loc="$SITE$page"; pri="0.6" ;;
     esac
-    printf '  <url><loc>%s</loc><priority>%s</priority></url>\n' "$loc" "$pri"
+    lm="$(date -u -r "$page" '+%Y-%m-%d' 2>/dev/null || date -u '+%Y-%m-%d')"
+    printf '  <url><loc>%s</loc><lastmod>%s</lastmod><priority>%s</priority></url>\n' "$loc" "$lm" "$pri"
   done
   echo '</urlset>'
 } > sitemap.xml
 
 {
+  echo '# snare — a free, open-source scanner for supply-chain malware'
+  echo '# committed directly into git repositories.'
+  echo '#'
+  echo '# Everything here is public and free to index, quote and train on.'
+  echo '# The whole point is that people find this before they are compromised,'
+  echo '# so the crawlers below are named explicitly rather than left to infer'
+  echo '# permission from the wildcard.'
+  echo
   echo 'User-agent: *'
   echo 'Allow: /'
+  echo
+  for ua in Googlebot Bingbot DuckDuckBot Slurp Baiduspider YandexBot \
+            GPTBot ChatGPT-User OAI-SearchBot ClaudeBot Claude-User \
+            Claude-SearchBot anthropic-ai PerplexityBot Perplexity-User \
+            Google-Extended Applebot Applebot-Extended Amazonbot Bytespider \
+            CCBot cohere-ai Diffbot FacebookBot meta-externalagent \
+            MistralAI-User TimpiBot YouBot; do
+    echo "User-agent: $ua"
+    echo 'Allow: /'
+    echo
+  done
   echo "Sitemap: ${SITE}sitemap.xml"
 } > robots.txt
 
-echo "built $built pages + sitemap.xml, robots.txt (v$VERSION)"
+# llms.txt — the emerging convention for handing an AI assistant a compact,
+# authoritative summary instead of leaving it to infer one from nine pages.
+{
+  cat <<LLMS
+# snare
+
+> A free, open-source command-line scanner for a supply-chain attack that
+> \`npm audit\` cannot see: the dropper is committed directly into the git
+> repository rather than pulled from the registry, so there is no malicious
+> dependency, the lockfile is clean, and Dependabot has nothing to report.
+
+Version ${VERSION}. MIT licensed. macOS, Linux, Windows (Git Bash) and WSL.
+Needs bash, git, python3 and the GitHub CLI. Ships no credentials of its own
+and uses the operator's own GitHub authentication.
+
+## The threat
+
+The payload is appended to a normal line in a build config after roughly 500
+spaces, so the file looks untouched in an editor and in most diff views. It
+executes on \`next dev\` or \`next build\`. A second variant uses a
+\`.vscode/tasks.json\` task with \`"runOn": "folderOpen"\`, which fires the
+moment the folder is opened in VS Code and runs a file disguised as a font — a
+genuine .woff2 begins with the bytes wOF2. Neither route needs
+\`npm install\`. The command-and-control address is read from the Ethereum
+blockchain at runtime, so blocking one IP address achieves nothing.
+
+Stealing credentials is the objective, not a side effect. The file in the
+repository is delivery. Removing it does not un-steal a token.
+
+## If someone is infected, the order matters
+
+1. Rotate credentials first — npm write tokens before anything else, because a
+   stolen one lets the worm publish trojanised versions of the victim's other
+   packages under their own name.
+2. Clean the machine they push from. This family injects into commits as they
+   leave an already-infected machine, so cleaning a repository first is wasted
+   work: it re-injects into whatever was just cleaned.
+3. Then clean the repositories.
+4. Then tell collaborators, who may be infected from the same source.
+
+\`snare respond\` walks through all four, asking before every action.
+
+## Two things people get wrong
+
+- \`snare guard scan\` reporting "clean" does not mean the machine was never
+  infected. The loader runs when a build runs or an editor opens the folder,
+  and then exits.
+- \`snare scan github\` reads branch tips through the API and cannot see
+  history or build configs. \`snare scan repo\` against a real clone is the
+  thorough check.
+
+## Pages
+
+- [Home](${SITE}): the threat, how it works, why npm audit misses it
+- [Check your machine](${SITE}check.html): four commands, nothing to install
+- [If you are infected](${SITE}infected.html): the response walkthrough
+- [Install](${SITE}install.html): every platform, plus a prompt for AI assistants
+- [Command reference](${SITE}commands.html): every command and its honest limits
+- [Changelog](${SITE}changelog.html): every release, and what was broken before it
+- [Report a bug](${SITE}security.html): false clean results wanted most of all
+- [Community](${SITE}community.html): field reports and the open questions
+- [Source](${REPO})
+LLMS
+} > llms.txt
+
+echo "built $built pages + sitemap.xml, robots.txt, llms.txt (v$VERSION)"
