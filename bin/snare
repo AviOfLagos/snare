@@ -54,9 +54,15 @@ fi
 . "$_dir/lib/ci.sh"
 . "$_dir/lib/shield.sh"
 . "$_dir/lib/rotate.sh"
+. "$_dir/lib/respond.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
+
+${C_BLD}START HERE${C_OFF}
+  snare respond                 guided clean-up: rotate, machine, repos, notify
+  snare respond --status        where you got to
+  snare respond --reset         start the walkthrough again
 
 ${C_BLD}TRACK${C_OFF}
   snare guard status            is the monitor running?
@@ -147,7 +153,9 @@ cmd_doctor(){
     echo "  token scopes: $(gh api -i user 2>/dev/null | awk -F': ' '/^[Xx]-[Oo]auth-[Ss]copes:/{print $2}' | tr -d '\r')"
     echo "  repos reachable: $(gh api --paginate 'user/repos?affiliation=owner,collaborator,organization_member&per_page=100' --jq '.[].full_name' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
   else ylw "  not authenticated — run: gh auth login"; fi
-  echo; dim "  next: snare scan github"
+  echo
+  dim "  next: snare respond    — guided clean-up in the right order"
+  dim "        snare scan github — just look, change nothing"
 }
 
 main(){
@@ -180,6 +188,7 @@ main(){
     ci)     cmd_ci "$@" ;;
     shield) cmd_shield "$@" ;;
     rotate) cmd_rotate "$@" ;;
+    respond) cmd_respond "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v)
       _sha="$(git -C "$_dir" rev-parse --short HEAD 2>/dev/null)"
