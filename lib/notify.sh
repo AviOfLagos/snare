@@ -53,13 +53,41 @@ grep -rn "folderOpen" .vscode/tasks.json 2>/dev/null
 head -c 4 public/fonts/*.woff2 2>/dev/null   # a real font prints wOF2
 \`\`\`
 
-### Then
+### Then, in this order
 
-1. **Delete your local clone and re-clone.** If history was rewritten, a \`git pull\`
-   will conflict — you must re-clone.
-2. **Rotate credentials**: GitHub tokens (github.com/settings/tokens), SSH keys,
-   npm tokens, \`.env\` values, and anything copied to your clipboard.
-3. Check your GitHub account for repos, keys or OAuth apps you did not create.
+**1. Rotate your credentials first.** Stealing them is what this family is *for* —
+the file in the repository is delivery, not payload. Removing it does not
+un-steal a token.
+
+- **npm tokens first** — https://www.npmjs.com/settings/~/tokens — start with
+  write / "bypass 2FA". A stolen npm token lets the worm publish trojanised
+  versions of *your other packages* under your name. This is the step that
+  stops one machine becoming a supply-chain incident.
+- GitHub PATs and OAuth apps — https://github.com/settings/tokens — and SSH
+  keys — https://github.com/settings/keys
+- Cloud keys (AWS — check Secrets Manager per region — GCP, Azure)
+- \`.env\` files in any project you had open, kubeconfig, Vault, database URLs,
+  VPN, AI-service keys, wallet keys and seed phrases
+- **Your clipboard.** This family has a documented clipboard stealer; a password
+  pasted out of a manager while infected should be treated as seen.
+
+**2. Check your own machine before you clean anything.** This family injects
+into commits *from an already-infected machine*, so cleaning a repository while
+your machine is still infected just re-injects into it.
+
+\`\`\`bash
+snare doctor          # this machine, persistence spots, your account
+snare guard scan      # one-shot process check
+snare rotate          # the checklist above, plus a GitHub audit
+\`\`\`
+
+**3. Delete your local clone and re-clone.** If history was rewritten a
+\`git pull\` will conflict — you must re-clone, not pull.
+
+**4. Check your GitHub account** for repositories, keys, OAuth apps or Actions
+workflows you did not create. This family leaves behind a workflow that
+exfiltrates secrets on every push, and it survives long after the dropper is
+removed.
 
 Scanned and cleaned with [snare](https://github.com/) — \`snare scan repo .\` to check your own clones.
 MD
@@ -149,10 +177,35 @@ PLEASE CHECK:
   grep -rn "0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a" .
   head -c 4 public/fonts/*.woff2
 
-THEN:
-- Delete old clones and re-clone (a pull may conflict if history was rewritten).
-- Rotate GitHub tokens, SSH keys, npm tokens, .env values, and anything you
-  copied to your clipboard. Check your account for repos/keys you did not create.
+THEN, IN THIS ORDER:
+
+1. ROTATE YOUR CREDENTIALS FIRST. Stealing them is what this family is for -
+   the file in the repo is delivery, not payload. Removing it does not
+   un-steal a token.
+     - npm tokens first (write / "bypass 2FA"):
+       https://www.npmjs.com/settings/~/tokens
+       A stolen npm token lets it publish trojanised versions of your other
+       packages under your name.
+     - GitHub PATs and OAuth apps: https://github.com/settings/tokens
+     - SSH keys: https://github.com/settings/keys
+     - Cloud keys (AWS - check Secrets Manager per region - GCP, Azure)
+     - .env files, kubeconfig, Vault, database URLs, VPN, AI-service keys,
+       crypto wallet keys and seed phrases
+     - Your clipboard: this family has a clipboard stealer, so anything you
+       copied while infected should be treated as seen.
+
+2. CHECK YOUR MACHINE before cleaning any repo - this family injects from an
+   already-infected machine, so cleaning first just lets it re-inject:
+     snare doctor
+     snare guard scan
+     snare rotate
+
+3. Delete old clones and re-clone (a pull will conflict if history was
+   rewritten - you must re-clone, not pull).
+
+4. Check your GitHub account for repos, keys, OAuth apps or Actions workflows
+   you did not create. This family leaves a workflow that exfiltrates secrets
+   on every push and survives the dropper being removed.
 
 Happy to walk you through it.
 """
