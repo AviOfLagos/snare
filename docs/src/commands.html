@@ -41,6 +41,24 @@
     <a href="#limits">Limits</a>
   </div>
 
+  <section class="stack" id="start">
+    <span class="eyebrow">Start here</span>
+    <h2>The guided one</h2>
+    <p>If you do not want to choose between the commands below, this runs the whole sequence and
+    asks you at each step. It is the same work, in the order that actually helps.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">Guided clean-up</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare respond                   walk through everything, one question at a time
+snare respond --status          where you got to
+snare respond --reset           start the walkthrough again</pre></div></div>
+    <p class="note">Six steps: check the machine, rotate credentials, clean the machine, find what
+    is infected, fix it, tell your collaborators — then a verification pass that re-reads rather
+    than trusting what just happened. Anything that writes to a repository defaults to
+    <strong>no</strong>, and the choice to purge history is asked once rather than per repository.
+    Progress is saved, so stopping and resuming is fine.</p>
+    <p class="note">It refuses to run unattended. With no terminal, or <code>CI</code> set, it
+    exits rather than prompting where nobody can answer — use the individual commands there.</p>
+  </section>
+
   <section class="stack" id="find">
     <span class="eyebrow">Find it</span>
     <h2>Scanning</h2>

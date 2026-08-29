@@ -299,7 +299,7 @@ td code{color:var(--accent)}
   background:var(--surface);border:1px solid var(--hair);border-left:3px solid var(--accent);
   border-radius:8px;padding:17px 19px;display:flex;flex-direction:column;gap:7px;
 }
-.callout h3{color:var(--accent)}
+.callout h2,.callout h3{color:var(--accent)}
 .callout p{font-size:.95rem}
 
 /* footer lives in the components block below */
@@ -485,7 +485,7 @@ td code{color:var(--accent)}
 .rel-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px}
 .rel-v{
   font-family:var(--disp);font-size:1.45rem;font-weight:800;letter-spacing:-.02em;color:var(--ink);
-}
+;margin:0;display:inline-block}
 .rel-date{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
 .tag{
   font-family:var(--mono);font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;

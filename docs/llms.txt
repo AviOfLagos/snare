@@ -1,0 +1,58 @@
+# snare
+
+> A free, open-source command-line scanner for a supply-chain attack that
+> `npm audit` cannot see: the dropper is committed directly into the git
+> repository rather than pulled from the registry, so there is no malicious
+> dependency, the lockfile is clean, and Dependabot has nothing to report.
+
+Version 1.1.0. MIT licensed. macOS, Linux, Windows (Git Bash) and WSL.
+Needs bash, git, python3 and the GitHub CLI. Ships no credentials of its own
+and uses the operator's own GitHub authentication.
+
+## The threat
+
+The payload is appended to a normal line in a build config after roughly 500
+spaces, so the file looks untouched in an editor and in most diff views. It
+executes on `next dev` or `next build`. A second variant uses a
+`.vscode/tasks.json` task with `"runOn": "folderOpen"`, which fires the
+moment the folder is opened in VS Code and runs a file disguised as a font — a
+genuine .woff2 begins with the bytes wOF2. Neither route needs
+`npm install`. The command-and-control address is read from the Ethereum
+blockchain at runtime, so blocking one IP address achieves nothing.
+
+Stealing credentials is the objective, not a side effect. The file in the
+repository is delivery. Removing it does not un-steal a token.
+
+## If someone is infected, the order matters
+
+1. Rotate credentials first — npm write tokens before anything else, because a
+   stolen one lets the worm publish trojanised versions of the victim's other
+   packages under their own name.
+2. Clean the machine they push from. This family injects into commits as they
+   leave an already-infected machine, so cleaning a repository first is wasted
+   work: it re-injects into whatever was just cleaned.
+3. Then clean the repositories.
+4. Then tell collaborators, who may be infected from the same source.
+
+`snare respond` walks through all four, asking before every action.
+
+## Two things people get wrong
+
+- `snare guard scan` reporting "clean" does not mean the machine was never
+  infected. The loader runs when a build runs or an editor opens the folder,
+  and then exits.
+- `snare scan github` reads branch tips through the API and cannot see
+  history or build configs. `snare scan repo` against a real clone is the
+  thorough check.
+
+## Pages
+
+- [Home](https://avioflagos.github.io/snare/): the threat, how it works, why npm audit misses it
+- [Check your machine](https://avioflagos.github.io/snare/check.html): four commands, nothing to install
+- [If you are infected](https://avioflagos.github.io/snare/infected.html): the response walkthrough
+- [Install](https://avioflagos.github.io/snare/install.html): every platform, plus a prompt for AI assistants
+- [Command reference](https://avioflagos.github.io/snare/commands.html): every command and its honest limits
+- [Changelog](https://avioflagos.github.io/snare/changelog.html): every release, and what was broken before it
+- [Report a bug](https://avioflagos.github.io/snare/security.html): false clean results wanted most of all
+- [Community](https://avioflagos.github.io/snare/community.html): field reports and the open questions
+- [Source](https://github.com/AviOfLagos/snare)

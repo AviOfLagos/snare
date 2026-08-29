@@ -26,9 +26,15 @@
 <link rel="expect" href="#main" blocking="render">
 <script>/* apply a pinned theme before first paint so the page never flashes */
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"Changelog","item":"https://avioflagos.github.io/snare/changelog.html"}]}
+</script>
 </head>
 <body data-page="changelog">
 <a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
@@ -53,6 +59,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     </div>
   </div>
 </nav>
+</header>
 
 <main id="main">
 <div class="docs">
@@ -86,7 +93,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 
   <section class="stack" id="how-to-check">
     <div class="callout">
-      <h3>Checking what you are running</h3>
+      <h2>Checking what you are running</h2>
       <p><code>snare version</code> shows your version and commit.
       <code>snare update --check</code> compares <strong>commits</strong>, not just version
       numbers — the version once stood still for 33 commits, so a user 14 commits behind was
@@ -101,7 +108,7 @@ snare update && snare selftest</pre></div></div>
   <section class="stack" id="v1-1-0">
     <div class="rel">
       <div class="rel-head">
-        <span class="rel-v">1.1.0</span>
+        <h2 class="rel-v">1.1.0</h2>
         <span class="rel-date">29 August 2026</span>
         <span class="tag now">Current</span>
       </div>
@@ -256,7 +263,7 @@ snare update && snare selftest</pre></div></div>
   <section class="stack" id="v1-0-0">
     <div class="rel">
       <div class="rel-head">
-        <span class="rel-v">1.0.0</span>
+        <h2 class="rel-v">1.0.0</h2>
         <span class="rel-date">25 August 2026</span>
         <span class="tag">Initial release</span>
       </div>
