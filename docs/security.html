@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report a bug — a false clean is the one we most want — snare</title>
+<meta name="description" content="snare has shipped bugs that made it report clean on genuinely infected repositories. If you find another, that is the most useful contribution there is. What to report, and how.">
+<meta name="author" content="AviOfLagos">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://avioflagos.github.io/snare/security.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="snare">
+<meta property="og:title" content="Report a bug — a false clean is the one we most want — snare">
+<meta property="og:description" content="snare has shipped bugs that made it report clean on genuinely infected repositories. If you find another, that is the most useful contribution there is. What to report, and how.">
+<meta property="og:url" content="https://avioflagos.github.io/snare/security.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Report a bug — a false clean is the one we most want — snare">
+<meta name="twitter:description" content="snare has shipped bugs that made it report clean on genuinely infected repositories. If you find another, that is the most useful contribution there is. What to report, and how.">
+<meta name="theme-color" content="#C2410C" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪤</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* apply a pinned theme before first paint so the page never flashes */
+try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body data-page="security">
+<a class="skip" href="#main">Skip to content</a>
+<nav class="nav" aria-label="Primary">
+  <div class="nav-in">
+    <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.1.0">v1.1.0</a>
+    <div class="nav-links" id="nav-links">
+      <a href="index.html">The threat</a>
+      <a href="check.html">Check</a>
+      <a href="infected.html">If infected</a>
+      <a href="install.html">Install</a>
+      <a href="docs.html">Docs</a>
+      <a href="community.html">Community</a>
+      <a class="nav-cta" href="install.html">Install snare</a>
+    </div>
+    <div class="nav-tools">
+      <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+      <button class="icon-btn nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+<div class="wrap page-head">
+  <span class="eyebrow">Found a hole?</span>
+  <h1>Tell us — that is the whole ask</h1>
+  <p class="lede">This tool has shipped bugs that made it report clean on genuinely
+  infected repositories. Every one was found by someone actually testing it rather than
+  reading it. If you find another, that is the most useful contribution there is.</p>
+</div>
+
+<div class="wrap">
+<section class="stack" id="what">
+  <span class="eyebrow">What to report</span>
+  <h2>In rough order of how much we want to hear about it</h2>
+  <ol class="chain">
+    <li><b>A false clean</b><span>A repository or sample snare says is fine and is not.
+    This is the worst failure a scanner can have, and the one we most want reported.</span></li>
+    <li><b>An evasion</b><span>A payload shaped so the heuristics miss it, or a way to hide
+    from the guard, the hook or the shield. One such hole let any process hide from the
+    guard simply by having the word <code>snare</code> in its command line.</span></li>
+    <li><b>A false positive</b><span>Noisy enough that people would learn to ignore the
+    output. That is a real failure too — a scanner nobody reads protects nobody.</span></li>
+    <li><b>A variant we do not detect</b><span>A different config file, a different
+    execution route, a different obfuscation.</span></li>
+    <li><b>Anything destructive</b><span>A case where <code>fix</code> removes something it
+    should not, or reports success without having done anything.</span></li>
+  </ol>
+</section>
+
+<section class="stack" id="how">
+  <span class="eyebrow">How</span>
+  <h2>Open an issue. That is enough.</h2>
+  <p><strong>You do not need a fix, a pull request, or a polished write-up</strong> — a repository
+  name, a file, or "this sample is not caught" is plenty. If you would rather not post details
+  publicly, open an issue saying so without the specifics and we will find another way.</p>
+
+  <div class="panel"><div class="panel-bar"><span class="label">Report it</span><div class="bar-actions"></div></div>
+    <div class="scroller"><pre>https://github.com/AviOfLagos/snare/issues/new
+
+# helpful, if you have it:
+snare selftest          # does detection still work on your machine?
+snare version
+bash --version          # macOS ships bash 3.2; several bugs were 3.2-specific</pre></div></div>
+
+  <p class="note">Known-good starting points if you want to poke at it: the heuristics
+  live in <code>lib/scan.sh</code>, the process matching in <code>lib/guard.sh</code>,
+  and the history rewriting in <code>lib/fix.sh</code>. <code>snare selftest</code>
+  shows the shape of a test case; adding one that fails is a perfectly good bug report.</p>
+
+  <p class="note">There is also an open discussion on the two questions we cannot answer
+  ourselves: how this family actually reaches developer machines, and whether a defence
+  can propagate the way the infection does without becoming a dropper itself.
+  <a href="https://github.com/AviOfLagos/snare/discussions">Join it here.</a></p>
+</section>
+</div>
+<div class="wrap"><nav class="pager" aria-label="Page">
+  <a href="community.html"><span class="dir">← Previous</span><b>Community</b></a>
+</nav></div>
+</main>
+
+<div class="wrap">
+<footer>
+  <div class="foot-grid">
+    <div class="foot-col">
+      <b>snare</b>
+      <p class="foot-note">Free and open source under the MIT licence. Indicators and analysis are
+      published so other developers can detect this family in their own repositories. Payload
+      excerpts are truncated and defanged.</p>
+    </div>
+    <div class="foot-col">
+      <b>The threat</b>
+      <a href="index.html">How it works</a>
+      <a href="check.html">Check your machine</a>
+      <a href="infected.html">If you're infected</a>
+    </div>
+    <div class="foot-col">
+      <b>The tool</b>
+      <a href="install.html">Install</a>
+      <a href="docs.html">Documentation</a>
+      <a href="commands.html">Command reference</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="community.html">Community</a>
+      <a href="security.html">Report a bug</a>
+    </div>
+  </div>
+  <div class="foot-bar">
+    <span>Findings from a first-hand investigation, August 2026.</span>
+    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.1.0</a> · MIT</span>
+  </div>
+</footer>
+</div>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://avioflagos.github.io/snare/sitemap.xml
