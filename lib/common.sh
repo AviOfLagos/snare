@@ -78,6 +78,38 @@ require_gh(){
   gh auth setup-git >/dev/null 2>&1 || true   # no prompts on private clones
 }
 
+
+# --- portable primitives ---------------------------------------------------
+# First four bytes of a file as lowercase hex, e.g. "774f4632" (wOF2).
+# xxd ships with vim and is absent on minimal Linux images and some Git Bash
+# installs; od is POSIX and always present. Without this, a missing xxd made
+# every genuine font look like a payload — and in the pre-push hook that
+# blocked every push from any repo containing fonts.
+magic4(){ head -c 4 "$1" 2>/dev/null | od -An -v -tx1 2>/dev/null | tr -d ' \n'; }
+
+# Is this a real font? 0 = yes or undeterminable, 1 = definitely not.
+# "Undeterminable" deliberately counts as fine: refusing to guess beats
+# accusing a user's assets because a tool was missing.
+is_font(){
+  local m; m="$(magic4 "$1")"
+  [ -z "$m" ] && return 0
+  case "$m" in
+    774f4632|774f4646|00010000|4f54544f|74727565) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Short stable hash. shasum is perl-based and not everywhere; fall back through
+# the common alternatives, then to cksum, which is POSIX.
+short_hash(){
+  if command -v shasum   >/dev/null 2>&1; then shasum   | cut -c1-16
+  elif command -v sha1sum >/dev/null 2>&1; then sha1sum  | cut -c1-16
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -c1-16
+  elif command -v md5sum  >/dev/null 2>&1; then md5sum   | cut -c1-16
+  else cksum | tr -d ' ' | cut -c1-16
+  fi
+}
+
 gh_user(){ gh api user --jq .login 2>/dev/null; }
 
 # ---------------------------------------------------------------- platform

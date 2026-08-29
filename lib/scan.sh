@@ -97,10 +97,9 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
       [ -z "$f" ] && continue
       # Compare as hex: bash cannot hold NUL, so the TrueType magic
       # 00 01 00 00 can never match as a literal string.
-      case "$(head -c 4 "$f" 2>/dev/null | xxd -p 2>/dev/null)" in
-        774f4632|774f4646|00010000|4f54544f|74727565) ;;              # wOF2 wOFF ttf OTTO true
-        *) _hit "$f is not a real font (no wOF2/OTTO magic) — likely a payload"; bad=1 ;;
-      esac
+      if ! is_font "$f"; then
+        _hit "$f is not a real font (no wOF2/OTTO magic) — likely a payload"; bad=1
+      fi
     done < <(find . \( -name '*.woff2' -o -name '*.woff' -o -name '*.ttf' -o -name '*.otf' \) \
              -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -30)
     [ "$bad" = 0 ] && grn "  all font files have valid magic bytes"
@@ -227,7 +226,7 @@ _scan_ref(){ # $1=repo $2=ref $3=pattern -> prints findings
   # fake font: fetch only small font files and check magic bytes
   while IFS= read -r f; do
     [ -z "$f" ] && continue
-    local head4; head4="$(gh api "repos/$R/contents/$f?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | head -c 4 | xxd -p 2>/dev/null)"
+    local head4; head4="$(gh api "repos/$R/contents/$f?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | head -c 4 | od -An -v -tx1 2>/dev/null | tr -d ' \n')"
     case "$head4" in 774f4632|774f4646|00010000|4f54544f|74727565|"") ;; *) hits="${hits}    $f is not a real font (magic=0x$head4) @$REF
 ";; esac
   done < <(echo "$tree" | grep -E '\.(woff2|woff)$' | head -3)

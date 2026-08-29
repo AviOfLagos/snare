@@ -204,4 +204,7 @@ _sched_status(){
   echo "  reports on disk: ${n:-0}  ($SNARE_REPORTS)"
   local last; last="$(ls -1t "$SNARE_REPORTS"/report-*.txt 2>/dev/null | head -1)"
   [ -n "$last" ] && dim "  most recent: $last"
+  # A status command must not report failure just because there is nothing to
+  # report. Without this the exit code depended on whether any report existed.
+  return 0
 }

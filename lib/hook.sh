@@ -71,10 +71,9 @@ _hook_run(){
     # 3. an asset that is not the asset it claims to be
     case "$f" in
       *.woff2|*.woff|*.ttf|*.otf)
-        case "$(head -c 4 "$f" 2>/dev/null | xxd -p 2>/dev/null)" in
-          774f4632|774f4646|00010000|4f54544f|74727565) ;;
-          *) red "  [blocked] $f — not a real font (no valid magic bytes)"; bad=1 ;;
-        esac ;;
+        if ! is_font "$f"; then
+          red "  [blocked] $f — not a real font (no valid magic bytes)"; bad=1
+        fi ;;
     esac
   done <<< "$list"
 
