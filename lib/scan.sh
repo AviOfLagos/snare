@@ -152,29 +152,242 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
   )
 }
 
+# ------------------------------------------------------------ owner listing
+# Which accounts and organisations can this token actually reach? Without this
+# the only way to narrow a scan was to already know an org's exact login, and
+# the only alternative was scanning every repository you can see — which on a
+# real account is hundreds of repositories and thousands of API calls.
+
+# The set of owners, cheaply: login \t type.
+_scan_owners_set(){
+  { # Owners of the repositories you are attached to. No extra scope needed.
+    gh api --paginate \
+      'user/repos?affiliation=owner,collaborator,organization_member&per_page=100' \
+      --jq '.[] | [.owner.login, .owner.type] | @tsv' 2>/dev/null
+    # Organisations you belong to but hold no repository in directly. Needs
+    # read:org; without it this adds nothing and the listing is merely shorter.
+    gh api user/orgs --jq '.[].login' 2>/dev/null | while IFS= read -r o; do
+      [ -n "$o" ] && printf '%s\tOrganization\n' "$o"
+    done
+  } | awk -F'\t' '$1 != "" && !seen[$1]++ { print $1 "\t" $2 }' | sort -f
+}
+
+# Count each owner with the SAME call the scan uses, because a listing whose
+# numbers disagree with the scan is worse than no listing. The affiliation
+# endpoint under-reports: it returns only repositories you are directly
+# attached to, while scanning an owner covers everything you can see there.
+_scan_count_one(){ # $1=login $2=type
+  local json total priv
+  json="$(gh repo list "$1" --limit "${SNARE_OWNER_LIMIT:-1000}" \
+          --json isPrivate --jq '.[].isPrivate' 2>/dev/null)"
+  total="$(printf '%s' "$json" | grep -c . || true)"
+  priv="$(printf '%s' "$json" | grep -c true || true)"
+  printf '%s\t%s\t%s\t%s\n' "$1" "$2" "${total:-0}" "${priv:-0}"
+}
+
+_scan_owner_counts(){ # $1=file of login\ttype -> login\ttype\ttotal\tprivate
+  local login type i=0 n d par
+  n="$(grep -c . "$1" 2>/dev/null | tr -d ' ')"
+  d="$(mktemp -d "${TMPDIR:-/tmp}/snarecount.XXXXXX")" || return 1
+  # One call per owner, in bounded batches. Sequentially this took 41 seconds
+  # on an account with 22 organisations, which is long enough that people stop
+  # using the command. Bounded, because dozens of concurrent calls get you
+  # rate-limited rather than answered.
+  par="${SNARE_COUNT_JOBS:-8}"
+  while IFS="$(printf '\t')" read -r login type; do
+    [ -z "$login" ] && continue
+    i=$((i+1))
+    _scan_count_one "$login" "$type" > "$d/$(printf '%04d' "$i")" &
+    if [ $((i % par)) -eq 0 ]; then
+      wait
+      # Only animate for a human: piped into a file or a pager, a \r progress
+      # line just concatenates into one unreadable smear.
+      [ -t 2 ] && printf '\r  counting %s/%s...' "$i" "${n:-?}" >&2
+    fi
+  done < "$1"
+  wait
+  [ -t 2 ] && printf '\r%*s\r' 40 '' >&2
+  # Zero-padded names, so the glob restores the input order.
+  cat "$d"/* 2>/dev/null
+  rm -rf "$d"
+}
+
+# Everything the table needs, filtered and sorted biggest-first.
+_scan_owners_load(){ # $1=all(0|1)  $2=me  $3=path to write the full set to
+  local keep
+  keep="$(mktemp "${TMPDIR:-/tmp}/snareowners.XXXXXX")" || return 1
+  _scan_owners_set > "$3"
+  # Someone asking which orgs they are in does not want dozens of personal
+  # accounts they hold a single collaborator bit on.
+  awk -F'\t' -v me="$2" -v all="$1" \
+    '$1 == me || $2 == "Organization" || all == "1"' "$3" > "$keep"
+  _scan_owner_counts "$keep" | sort -t"$(printf '\t')" -k3,3nr -k1,1f
+  rm -f "$keep"
+}
+
+_scan_owner_table(){ # $1=file of login\ttype\ttotal\tprivate  $2=me
+  local i=0 login type total priv label
+  printf '  %3s  %-28s %-5s %7s %9s\n' "#" "OWNER" "TYPE" "REPOS" "PRIVATE"
+  while IFS="$(printf '\t')" read -r login type total priv; do
+    [ -z "$login" ] && continue
+    i=$((i+1))
+    if   [ "$login" = "$2" ];          then label="you"
+    elif [ "$type" = "Organization" ]; then label="org"
+    else                                    label="user"; fi
+    printf '  %3d  %-28s %-5s %7s %9s\n' "$i" "$login" "$label" "$total" "$priv"
+  done < "$1"
+}
+
+cmd_scan_orgs(){
+  require_gh
+  local all=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all) all=1 ;;
+      *) red "unknown flag: $1"; echo "  usage: snare scan orgs [--all]"; return 2 ;;
+    esac; shift
+  done
+
+  local full sel me
+  full="$(mktemp "${TMPDIR:-/tmp}/snareowners.XXXXXX")" || die "cannot create a temp file"
+  sel="$(mktemp  "${TMPDIR:-/tmp}/snareowners.XXXXXX")" || die "cannot create a temp file"
+  # shellcheck disable=SC2064
+  trap "rm -f '$full' '$sel'" RETURN
+
+  me="$(gh_user)"
+  echo "Reading the accounts and organisations you can reach..."
+  _scan_owners_load "$all" "$me" "$full" > "$sel"
+
+  local n; n="$(grep -c . "$sel" 2>/dev/null | tr -d ' ')"
+  if [ "${n:-0}" -eq 0 ]; then
+    ylw "  no owners found — is this token scoped to any repositories?"
+    return 0
+  fi
+
+  hdr "Owners you can reach"
+  _scan_owner_table "$sel" "$me"
+
+  local repos hidden first
+  repos="$(awk -F'\t' '{s += $3} END {print s+0}' "$sel")"
+  echo
+  echo "  $n owner(s), $repos repositor(ies) you could scan through them."
+  if [ "$all" = 0 ]; then
+    hidden="$(awk -F'\t' -v me="$me" '$1 != me && $2 != "Organization"' "$full" | grep -c . || true)"
+    [ "${hidden:-0}" -gt 0 ] && \
+      dim "  $hidden individual account(s) not shown — snare scan orgs --all"
+  fi
+  first="$(head -1 "$sel" | cut -f1)"
+  echo
+  dim "  scan one:      snare scan github --owner $first"
+  dim "  scan several:  snare scan github --owner a,b,c"
+  dim "  choose here:   snare scan github --pick"
+}
+
+# Render the same table and read a selection. Prompts go to stderr so the
+# chosen logins can be captured from stdout.
+_scan_pick_owners(){ # $1=all(0|1) -> selected logins on stdout
+  local full sel me n input idx
+  full="$(mktemp "${TMPDIR:-/tmp}/snarepick.XXXXXX")" || return 1
+  sel="$(mktemp  "${TMPDIR:-/tmp}/snarepick.XXXXXX")" || return 1
+  # shellcheck disable=SC2064
+  trap "rm -f '$full' '$sel'" RETURN
+
+  me="$(gh_user)"
+  echo "Reading the accounts and organisations you can reach..." >&2
+  _scan_owners_load "$1" "$me" "$full" > "$sel"
+  n="$(grep -c . "$sel" 2>/dev/null | tr -d ' ')"
+  [ "${n:-0}" -eq 0 ] && { red "  no owners found" >&2; return 1; }
+
+  {
+    printf '\n%s== Choose what to scan ==%s\n' "$C_BLD" "$C_OFF"
+    _scan_owner_table "$sel" "$me"
+    echo
+    echo "  Numbers, ranges or 'all'   e.g.  2      2,5      1-4      2,7-9"
+    [ "$1" = 0 ] && echo "  Individual accounts are hidden — cancel and add --all to include them"
+    printf '  Select (empty cancels): '
+  } >&2
+
+  read -r input
+  echo >&2
+  [ -z "$input" ] && return 0
+
+  idx="$(_scan_parse_sel "$input" "$n")"
+  [ -z "$idx" ] && { red "  nothing valid in '$input'" >&2; return 1; }
+  printf '%s\n' "$idx" | while IFS= read -r i; do
+    [ -z "$i" ] && continue
+    sed -n "${i}p" "$sel" | cut -f1
+  done
+}
+
+# "2,7-9" / "all" -> one index per line, sorted, deduplicated, in range.
+_scan_parse_sel(){ # $1=input  $2=max
+  local max="$2"
+  # The trailing newline matters: without it `read` drops the final token, so
+  # "2,5" selected only 2 and "all" selected nothing at all.
+  printf '%s\n' "$1" | tr ',' ' ' | tr -s '[:space:]' '\n' | while IFS= read -r tok; do
+    [ -z "$tok" ] && continue
+    case "$tok" in
+      all|ALL|a|A) seq 1 "$max" ;;
+      *-*)
+        lo="${tok%%-*}"; hi="${tok##*-}"
+        case "$lo$hi" in ""|*[!0-9]*) continue ;; esac
+        [ "$lo" -ge 1 ] && [ "$hi" -le "$max" ] && [ "$lo" -le "$hi" ] && seq "$lo" "$hi" ;;
+      *)
+        case "$tok" in *[!0-9]*) continue ;; esac
+        [ "$tok" -ge 1 ] && [ "$tok" -le "$max" ] && echo "$tok" ;;
+    esac
+  done | sort -un
+}
+
 # ------------------------------------------------------------------- GitHub
 cmd_scan_github(){
   require_gh
-  local limit=1000 owner="" allbr=0 scope="accessible"
+  local limit=1000 owner="" allbr=0 scope="accessible" pick=0 all=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --limit) limit="${2:-1000}"; shift ;;
       --owner) owner="${2:-}"; scope="owner"; shift ;;
       --mine)  scope="mine" ;;
+      --pick|--select) pick=1; scope="owner" ;;
+      --all)   all=1 ;;
       --all-branches) allbr=1 ;;
+      # An unknown flag used to be ignored in silence, so a typo like
+      # --all-branch quietly scanned every repository you can reach instead of
+      # the one thing you asked for.
+      *) red "unknown flag: $1"; echo "  see: snare help"; return 2 ;;
     esac; shift
   done
+
+  if [ "$pick" = 1 ]; then
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -n "${CI:-}" ]; then
+      red "--pick needs a terminal."
+      echo "  list what is reachable:  snare scan orgs"
+      echo "  then scan by name:       snare scan github --owner acme,other"
+      return 2
+    fi
+    owner="$(_scan_pick_owners "$all")" || return 2
+    [ -z "$owner" ] && { ylw "nothing selected — nothing scanned"; return 0; }
+  fi
   local flagged="$SNARE_LOGS/flagged.txt"; : > "$flagged"
   local report
   report="$SNARE_LOGS/scan-$(date '+%Y%m%dT%H%M%S').txt"
   local pattern; pattern="$(ioc_pattern)"
   local repos
   case "$scope" in
-    owner) repos="$(gh repo list "$owner" --limit "$limit" --json nameWithOwner --jq '.[].nameWithOwner')" ;;
+    owner)
+      local o acc=""
+      for o in $(printf '%s' "$owner" | tr ',' ' '); do
+        [ -z "$o" ] && continue
+        acc="$acc
+$(gh repo list "$o" --limit "$limit" --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null)"
+      done
+      repos="$(printf '%s\n' "$acc" | grep . | sort -u)" ;;
     mine)  repos="$(gh repo list --limit "$limit" --json nameWithOwner --jq '.[].nameWithOwner')" ;;
     *)     repos="$(gh api --paginate "user/repos?affiliation=owner,collaborator,organization_member&per_page=100" --jq '.[].full_name' 2>/dev/null | sort -u)" ;;
   esac
   local total; total="$(echo "$repos" | grep -c . || true)"
+  [ "$scope" = owner ] && \
+    echo "Owners: $(printf '%s' "$owner" | tr ',\n' '  ' | tr -s ' ')"
   echo "Scanning $total repositories via the API (no cloning)..."
   echo "scan $(date) — $total repos" >> "$report"
 

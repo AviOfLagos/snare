@@ -7,6 +7,181 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [Unreleased]
+
+### Fixed — remediation
+
+- **`fix` deleted the files a project needs instead of cleaning them.** The
+  branch-tip pass removed every file matching an IOC string — and a payload
+  appended to `postcss.config.mjs` *is* an IOC string, so the build config was
+  deleted before the strip pass further down the same function could ever see
+  it. `snare fix --all --push` pushed a commit that removed the malware and the
+  project's build along with it. Stripping now runs first: a file the project
+  needs (any `*.config.*`, `package.json`, a lockfile, `tsconfig*.json`) is
+  stripped and kept, never deleted, and only files that are payload and nothing
+  else are removed.
+- **`.vscode/tasks.json` was deleted whole.** A repository with a real build
+  task and one injected `folderOpen` task lost both. Only the `folderOpen` task
+  is removed now; the file goes only when nothing legitimate is left in it, and
+  a file that merely mentions `folderOpen` without defining such a task is
+  reported rather than deleted.
+- **A payload on a line of its own was never removed.** Both cleaners keyed on
+  the one-line signature — code, a long whitespace run, then code. The same
+  payload placed after a newline matched neither, so `--purge-history` rewrote
+  nothing and still reported success. Dropping a whole line is destructive, so
+  that rule is gated narrowly: long, minified-shaped, a hard campaign marker
+  *and* obfuscated code. Gating on the marker alone deleted every line that
+  legitimately quotes one, including the guard's own kill pattern.
+- **Tip cleaning looked for artifacts by content only.** `setup_bun.js` and a
+  payload wearing a `.woff2` extension are identified by filename and by magic
+  bytes, which no content grep can see — so `scan` reported them and `fix`
+  walked straight past them.
+- **`--purge-history` verified itself by grepping for one marker string.** An
+  obfuscated variant contains none of them, so the check passed on blobs it had
+  not changed. It now re-runs the same cleaner over every blob and counts what
+  is still strippable, so the verification and the fix cannot disagree.
+- **The two cleaners had drifted apart.** Tip cleaning and history purging each
+  carried their own copy of what a payload looks like. There is one definition
+  now, shared by both.
+- **A dry run that found something was reported as a failure.** `snare fix --all`
+  over five infected repositories printed `succeeded: 0    failed: 5`, and `FAILED:`
+  against each one, when it had read all five correctly and — being a dry run —
+  deliberately changed nothing. A dry run with findings now returns 3 instead of
+  sharing an exit code with a genuine error, and the summary reads
+  `carrying a payload: 5    already clean: 0    unreadable: 0`.
+- `fix` honours `.snare-tool` the way `scan` and `hook` already did. Without it,
+  remediating a fork of snare stripped the guard's own kill pattern out of
+  `lib/guard.sh`.
+
+### Fixed — `snare doctor` was macOS-only, and said so in neither place
+
+Reported by a Linux user whose guard was running while doctor said it was not.
+
+- **The guard check asked `launchctl` on every platform.** On Linux the guard is
+  a systemd user unit and on Windows a scheduled task, so doctor reported "guard
+  not installed" no matter what it was actually doing. It now asks the right
+  supervisor per platform, distinguishes *installed but stopped* from *not
+  installed*, and counts a hand-started `snare guard run` as running.
+- **"Persistence spots" checked three macOS paths that do not exist on Linux**,
+  found nothing in them, and printed `empty` three times — a clean bill of
+  health from having looked nowhere. This is the same false-clean shape as the
+  scanner bugs in 1.1.0, in the one command whose entire job is answering "is
+  this machine compromised". It now checks the locations that platform actually
+  uses — systemd user units, autostart, `/etc/cron.d` — and lists what it finds
+  rather than only counting. The user crontab is checked everywhere, which is
+  where the RAT on the reference host lived.
+- **Added a Node and npm integrity check**, because the package manager is a
+  file like any other and nothing was looking at it. It finds every npm on the
+  system without *running* npm to ask — running npm was the thing that executed
+  the loader — and flags `lib/*.js` carrying a hidden payload or a known IOC. It
+  also reports `~/.node_modules` (a legacy global resolution path, rarely
+  deliberate, and where the RAT's dependencies were planted) and a `NODE_OPTIONS`
+  `--require`/`--import` injection in the environment or a shell profile.
+- `cmd_doctor` moved out of `bin/snare` into `lib/doctor.sh`, like every other
+  command.
+- `snare selftest` covers all of it: 3 checks asserting a patched npm is flagged,
+  an intact one is not, and `guard_state` answers for the host platform. 27 in
+  total.
+
+### Added — where a detection came from
+
+Written after a live infection on a development machine where the guard was
+killing the loader every few minutes and the log said only "a node process
+matched an IOC". Finding the actual source — npm's own `lib/cli.js`, with 1.4MB
+appended after 200 spaces, so every `npm` invocation ran the loader — took an
+hour of manual work that the guard had all the information to do itself.
+
+- **`snare guard origins`** — an append-only provenance log
+  (`$SNARE_HOME/logs/origins.log`) recording, per detection: the file
+  responsible, the working directory, the full parent chain, and a link to the
+  evidence dump. It ends with the most frequent origins, because a source that
+  keeps re-launching shows up as a count.
+- The guard now walks the **parent chain** at detection time and records it.
+  `node -e <payload>` names no file on disk; its parent almost always does, and
+  that parent is the thing that needs cleaning. On the host above this resolves
+  in one line to `.../node_modules/npm/lib/cli.js`.
+- Ancestry is captured **before** anything else in the handler. These processes
+  exit in well under a second, and a parent that has already gone is a dead end.
+- A dropper that deletes itself is still reported, as
+  `<path> (no longer on disk)`. Reporting a path that is gone beats reporting
+  nothing, which is what the first version did.
+- Evidence dumps gain an `origin` section and the parent chain. They do **not**
+  record the process environment: on a machine being investigated for credential
+  theft, writing every environment variable into a log file is its own leak.
+
+### Added — IOCs from a live host, 2026-09-06..08
+
+Campaign `A8-4893-2`, two stages with two unrelated C2 addresses:
+
+- `193.247.144.38` — the EtherHiding loader's C2. Not the address in the
+  existing IOC list; the operator rotates it from the blockchain, which is the
+  whole point of that design and the reason blocking one IP is not a fix.
+- `194.11.226.41` — a **second, separate implant**: an obfuscated socket.io RAT
+  dropped to `~/.local/share/<random>.js`, held by a `crontab @reboot` line,
+  writing to a decoy `VSCodeUpdater.log`, with its dependencies (`axios`,
+  `socket.io-client`) installed into `~/.node_modules` so Node's legacy global
+  resolution would find them. Its command line contained **no loader string at
+  all** — the guard would not have caught it. It is matched now by the shape of
+  its argument: `--token "http://IP:PORT|SECRET"`.
+- `/*RS260605*/`, `/*M260630A*/` — markers the payload writes into what it
+  patches, and the ones that identify a patched file at rest.
+- The npm-patch route matters on its own: `ignore-scripts=true` was set on that
+  host and did not help, because the package manager itself was modified rather
+  than any package's install script.
+
+### Added — one command from picking to fixing
+
+- **`snare fix --pick`** chooses organisations from the same list `scan orgs`
+  prints, scans them, and remediates what it finds, in one pass. It is a dry run
+  unless you add `--push`; `--purge-history --push` also erases the payload from
+  all history. `--owner a,b` is the same thing without the prompt, for a script
+  or a timer. The destructive flags stay on the command line rather than hiding
+  inside a friendlier-sounding verb — force-pushing rewritten history across an
+  organisation should be legible in your shell history.
+- With `--purge-history` it checks for `git-filter-repo` **before** the picker
+  and the scan. The check previously lived inside the per-repository purge, so
+  you chose an organisation, waited out a full scan and a clone, and only then
+  found out it could not proceed.
+- It repeats the rotate-first warning at the last point before anything is
+  written to a repository other people depend on.
+
+### Added — choosing what to scan
+
+- **`snare scan orgs`** lists every account and organisation your token can
+  reach, largest first, with how many repositories each holds and how many of
+  those are private. Until now the only way to narrow a scan was to already know
+  an organisation's exact login; the only alternative was scanning everything,
+  which on a real account is 22 organisations and around 950 repositories —
+  several thousand API calls. Individual accounts you hold a single collaborator
+  bit on are collapsed into a count; `--all` lists them.
+- **`snare scan github --pick`** shows that same list and lets you choose from
+  it — `2`, `2,5`, `1-4`, `2,7-9` or `all`. It refuses to run without a
+  terminal and tells you the non-interactive equivalent instead.
+- **`snare scan github --owner` takes a list**: `--owner a,b,c`. This is what
+  `--pick` resolves to, so a selection made once can be re-run from a script or
+  a timer.
+- The repository counts are the number `--owner` will *actually* scan, taken
+  from the same call the scan uses. Deriving them from the affiliation endpoint
+  was cheaper but wrong — it counts only repositories you are directly attached
+  to, so one organisation listed as holding 1 repository actually held 5, and
+  another listed as 4 held 123. Counting runs in bounded parallel batches
+  (`SNARE_COUNT_JOBS`, default 8); sequentially it took 41 seconds.
+
+### Fixed — scanning
+
+- **An unrecognised flag to `scan github` was ignored in silence.** `--all-branch`
+  instead of `--all-branches`, or any other typo, quietly scanned every
+  repository you can reach rather than the narrower thing you asked for. Unknown
+  flags are now an error, as they already were in `report` and `respond`.
+
+### Added — test coverage
+
+- `snare selftest` now covers remediation, not just detection: 14 checks
+  asserting that a build config and `package.json` survive with the payload gone
+  and still parse, that a dropper, a fake font and a worm artifact are removed,
+  and that a genuine font, a clean source file and an honest build task are left
+  alone. 24 checks in total.
+
 ## [1.1.0] — 2026-08-29
 
 Everything since the initial release. If you installed snare before this,

@@ -3,14 +3,117 @@
 
 guard_pattern(){
   # Deliberately TIGHTER than iocs.txt: this decides what gets KILLED.
-  echo '23\.27\.13\.135|/0x/cl[bs]|/0x/ls|/verify-human/|q4FZkxX|A8-3379-6|global\[._t_s.\]|global\[._V.\]|0xa322[eE]5f3[dD]311[dD]3080e6f0121063e9a[dD][cC]2490[eE]f1a|node[[:space:]]+.*-e[[:space:]]+.*global\[|osascript.*(generalPasteboard|NSPasteboard)|setup_bun\.js|bun_environment\.js'
+  # The RAT arm ( --token "http://IP:PORT|SECRET" ) is here because the second
+  # stage seen in the wild is an ordinary-looking `node <script>.js` whose
+  # command line carries no loader string at all — it was held by a crontab
+  # @reboot line and would have run for as long as the machine did.
+  echo '23\.27\.13\.135|193\.247\.144\.38|194\.11\.226\.41|/0x/cl[bs]|/0x/ls|/verify-human/|q4FZkxX|A8-3379-6|A8-4893-2|/\*RS260605\*/|/\*M260630A\*/|global\[._t_s.\]|global\[._V.\]|0xa322[eE]5f3[dD]311[dD]3080e6f0121063e9a[dD][cC]2490[eE]f1a|node[[:space:]]+.*-e[[:space:]]+.*global\[|osascript.*(generalPasteboard|NSPasteboard)|setup_bun\.js|bun_environment\.js|[[:space:]]--token[[:space:]]+.?http://[0-9.]+:[0-9]+\|'
 }
 
-guard_capture(){ # $1=pid $2=reason -> prints evidence path
-  local pid="$1" reason="$2" out
+# ---------------------------------------------------------------- provenance
+# A detection that says only "a node process had a bad string in it" tells you
+# nothing about what to clean. On the host this was written for, the loader was
+# spawned by npm — because npm's own lib/cli.js had 1.4MB appended to it — and
+# finding that took an hour of manual work. The parent chain says it in a line.
+
+# Walk the parent chain, nearest first: pid|ppid|exe|cwd|cmd
+# Capture this EARLY: these processes exit in well under a second.
+guard_ancestry(){ # $1=pid
+  local pid="$1" i=0 ppid exe cwd cmd
+  while [ -n "$pid" ] && [ "$pid" != "0" ] && [ "$pid" != "1" ] && [ "$i" -lt 12 ]; do
+    i=$((i+1))
+    if [ -r "/proc/$pid/stat" ]; then
+      # field 4 of /proc/pid/stat is ppid, but comm (field 2) can contain
+      # spaces and brackets — read after the closing paren instead.
+      ppid="$(sed 's/.*) [^ ] //' "/proc/$pid/stat" 2>/dev/null | cut -d' ' -f1)"
+      exe="$(readlink "/proc/$pid/exe" 2>/dev/null)"
+      cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null)"
+      cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)"
+    else
+      ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+      exe=""
+      cwd="$(lsof -a -d cwd -Fn -p "$pid" 2>/dev/null | sed -n 's/^n//p' | head -1)"
+      cmd="$(snare_ps_cmd "$pid")"
+    fi
+    [ -z "$cmd" ] && break
+    printf '%s|%s|%s|%s|%s\n' "$pid" "${ppid:-?}" "${exe:-?}" "${cwd:-?}" \
+      "$(printf '%s' "$cmd" | tr -d '\n' | cut -c1-400)"
+    [ "$ppid" = "$pid" ] && break
+    pid="$ppid"
+  done
+}
+
+# The file that is actually responsible. `node -e <payload>` names no file —
+# its PARENT usually does, and that parent is the thing that needs cleaning.
+guard_origin_file(){ # ancestry on stdin -> one path, or nothing
+  local pid ppid exe cwd cmd tok base missing=""
+  while IFS='|' read -r pid ppid exe cwd cmd; do
+    for tok in $cmd; do
+      case "$tok" in
+        -*|"") continue ;;
+      esac
+      base="${tok##*/}"
+      case "$base" in
+        node|nodejs|bun|deno|python|python3|sh|bash|zsh|dash|env) continue ;;
+      esac
+      # A real file on disk that is not just the interpreter binary.
+      if [ -f "$tok" ]; then
+        printf '%s\n' "$tok"; return 0
+      fi
+      # Remember the first path-shaped argument that is NOT on disk. A dropper
+      # that deletes itself after running is still the answer to "where did
+      # this come from", and reporting it as missing beats reporting nothing.
+      case "$tok" in
+        /*|./*|../*) [ -z "$missing" ] && missing="$tok" ;;
+      esac
+    done
+    case "${exe##*/}" in
+      node|nodejs|bun|deno|python|python3|sh|bash|zsh|dash|env|""|"?") ;;
+      *) [ -f "$exe" ] && { printf '%s\n' "$exe"; return 0; } ;;
+    esac
+  done
+  [ -n "$missing" ] && { printf '%s (no longer on disk)\n' "$missing"; return 0; }
+  return 1
+}
+
+# One compact line: node -e ... <- npm install <- zed
+guard_chain_summary(){ # ancestry on stdin
+  local pid ppid exe cwd cmd out=""
+  while IFS='|' read -r pid ppid exe cwd cmd; do
+    cmd="$(printf '%s' "$cmd" | cut -c1-60)"
+    [ -z "$out" ] && out="$cmd" || out="$out <- $cmd"
+  done
+  printf '%s' "$out"
+}
+
+# Append-only provenance log. Separate from guard.log so that "where did this
+# come from" survives, greppable, without reading a full evidence dump.
+guard_record_origin(){ # $1=pid $2=reason $3=ancestry $4=evidence path
+  local pid="$1" reason="$2" anc="$3" ev="$4" origin cwd chain log
+  log="$SNARE_LOGS/origins.log"
+  origin="$(printf '%s\n' "$anc" | guard_origin_file)"
+  cwd="$(printf '%s\n' "$anc" | head -1 | cut -d'|' -f4)"
+  chain="$(printf '%s\n' "$anc" | guard_chain_summary)"
+  {
+    printf '[%s] reason=%s pid=%s\n' "$(date '+%F %T')" "$reason" "$pid"
+    printf '    origin:   %s\n' "${origin:-unknown (no file in the parent chain)}"
+    printf '    cwd:      %s\n' "${cwd:-unknown}"
+    printf '    chain:    %s\n' "${chain:-unknown}"
+    printf '    evidence: %s\n' "$ev"
+  } >> "$log"
+  printf '%s' "$origin"
+}
+
+guard_capture(){ # $1=pid $2=reason $3=ancestry -> prints evidence path
+  local pid="$1" reason="$2" anc="$3" out
   out="$SNARE_EVIDENCE/$(date '+%Y%m%dT%H%M%S')-pid${pid}.txt"
   {
     echo "detected_at: $(date '+%F %T')"; echo "reason: $reason"
+    echo "--- origin ---"
+    echo "spawned_by: $(printf '%s\n' "$anc" | guard_origin_file || echo 'unknown')"
+    echo "cwd:        $(printf '%s\n' "$anc" | head -1 | cut -d'|' -f4)"
+    echo "--- parent chain (nearest first: pid|ppid|exe|cwd|cmd) ---"
+    printf '%s\n' "$anc"
     echo "--- ps ---";   ps -ww -o pid,ppid,pgid,uid,lstart,command -p "$pid" 2>&1
     if command -v lsof >/dev/null 2>&1; then
       echo "--- files ---"; lsof -p "$pid" 2>/dev/null | head -80
@@ -31,12 +134,17 @@ guard_kill_tree(){
 }
 
 guard_handle(){ # $1=pid $2=reason $3=cmd
-  local pid="$1" reason="$2" cmd="$3" ev
-  ev="$(guard_capture "$pid" "$reason")"
+  local pid="$1" reason="$2" cmd="$3" ev anc origin
+  # Walk the parent chain BEFORE anything else: the parent is often gone within
+  # a second, and it is the parent that names the file worth cleaning.
+  anc="$(guard_ancestry "$pid")"
+  ev="$(guard_capture "$pid" "$reason" "$anc")"
+  origin="$(guard_record_origin "$pid" "$reason" "$anc" "$ev")"
   local msg
   msg="[$(date '+%F %T')] DETECTED pid=$pid reason=$reason"
   echo "$msg" | tee -a "$SNARE_LOGS/guard.log"
   echo "  cmd: $(echo "$cmd" | cut -c1-200)" | tee -a "$SNARE_LOGS/guard.log"
+  echo "  origin: ${origin:-unknown}" | tee -a "$SNARE_LOGS/guard.log"
   echo "  evidence: $ev" | tee -a "$SNARE_LOGS/guard.log"
   if [ "${GUARD_DRY:-0}" = "1" ]; then
     echo "  DRY-RUN: not killed" | tee -a "$SNARE_LOGS/guard.log"; return
@@ -80,7 +188,7 @@ guard_scan_once(){
   local ip
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    for ip in ${SNARE_C2_IPS:-23.27.13.135}; do
+    for ip in ${SNARE_C2_IPS:-23.27.13.135 193.247.144.38 194.11.226.41}; do
       case "$line" in *"$ip"*)
         pid="$(printf '%s' "$line" | snare_net_pid)"; [ -z "$pid" ] && continue
         [ "$pid" = "$$" ] && continue
@@ -91,6 +199,29 @@ guard_scan_once(){
     done
   done < <(snare_netlist)
   return $found
+}
+
+# Is the background guard actually running, and does it exist at all?
+# Per-platform, because the answer lives in launchd, systemd or Task Scheduler
+# depending on the host — `snare doctor` used to ask launchctl on every OS and
+# so reported "not installed" on Linux and Windows however it was running.
+# Prints: running | stopped | absent
+guard_state(){
+  case "$SNARE_OS" in
+    macos)
+      launchctl list 2>/dev/null | grep -q com.snare.guard && { echo running; return; }
+      [ -f "$HOME/Library/LaunchAgents/com.snare.guard.plist" ] && { echo stopped; return; } ;;
+    linux|wsl)
+      systemctl --user is-active --quiet snare-guard.service 2>/dev/null && { echo running; return; }
+      [ -f "$HOME/.config/systemd/user/snare-guard.service" ] && { echo stopped; return; } ;;
+    windows)
+      MSYS_NO_PATHCONV=1 schtasks /Query /TN "snare-guard" >/dev/null 2>&1 && { echo running; return; }
+      [ -f "$(cygpath -u "${APPDATA:-}" 2>/dev/null)/Microsoft/Windows/Start Menu/Programs/Startup/snare-guard.bat" ] \
+        && { echo stopped; return; } ;;
+  esac
+  # Someone running it by hand (no systemd, a spare terminal) is still running.
+  pgrep -f "snare guard run" >/dev/null 2>&1 && { echo running; return; }
+  echo absent
 }
 
 cmd_guard(){
@@ -113,8 +244,25 @@ cmd_guard(){
     start)     guard_service start ;;
     stop)      guard_service stop ;;
     log)       tail -f "$SNARE_LOGS/guard.log" ;;
+    origins)
+      # Where detections came from, which is the only question that leads to a
+      # fix. Newest last, so the tail of the file is the most recent incident.
+      if [ -s "$SNARE_LOGS/origins.log" ]; then
+        hdr "Where detections came from"
+        tail -n "${1:-60}" "$SNARE_LOGS/origins.log"
+        echo
+        dim "  full log: $SNARE_LOGS/origins.log"
+        echo
+        hdr "Most frequent origins"
+        grep '^    origin:' "$SNARE_LOGS/origins.log" 2>/dev/null \
+          | sed 's/^    origin:[[:space:]]*//' | sort | uniq -c | sort -rn | head -10 \
+          | sed 's/^/  /'
+      else
+        grn "  no detections recorded yet"
+        dim "  $SNARE_LOGS/origins.log"
+      fi ;;
     status)    guard_service status ;;
-    *) echo "usage: snare guard [status|scan|install|uninstall|start|stop|log|run]" ;;
+    *) echo "usage: snare guard [status|scan|install|uninstall|start|stop|log|origins|run]" ;;
   esac
 }
 

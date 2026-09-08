@@ -55,6 +55,7 @@ fi
 . "$_dir/lib/shield.sh"
 . "$_dir/lib/rotate.sh"
 . "$_dir/lib/respond.sh"
+. "$_dir/lib/doctor.sh"
 
 usage(){ cat <<USAGE
 ${C_BLD}snare${C_OFF} v$SNARE_VERSION — trap supply-chain malware before it runs
@@ -69,6 +70,7 @@ ${C_BLD}TRACK${C_OFF}
   snare guard install           run it at login (kills the loader within ~1s)
   snare guard scan              one-shot check of this machine
   snare guard log               follow the log
+  snare guard origins           where detections came from (the file to clean)
   snare guard start | stop      restart it after an update
   snare guard uninstall
 
@@ -76,7 +78,11 @@ ${C_BLD}FIND${C_OFF}
   snare scan                    scan the current directory
   snare scan repo [path]        deep-scan one clone: tree, all branches, history
   snare scan repo [path] --new  only findings that are not in the baseline
+  snare scan orgs               list every org/account you can reach, with counts
+  snare scan orgs --all         include individual accounts, not just orgs
   snare scan github             every repo you can reach, via API (no cloning)
+  snare scan github --pick      choose which orgs to scan, from a list
+  snare scan github --owner a,b only these orgs/accounts (comma-separated)
   snare scan github --mine      only repos you own
   snare scan github --all-branches
   snare doctor                  check this machine + your GitHub account
@@ -108,6 +114,9 @@ ${C_BLD}MAINTAIN${C_OFF}
 ${C_BLD}FIX${C_OFF}
   snare fix <owner/repo>                      dry run (always backs up first)
   snare fix --all                             every repo the last scan flagged
+  snare fix --pick                            choose orgs, scan them, then fix
+  snare fix --pick --purge-history --push     ... and erase it from all history
+  snare fix --owner a,b --push                the same, without the prompt
   snare fix <owner/repo> --push               clean branch tips and push
   snare fix <owner/repo> --purge-history --push   erase from all history
 
@@ -129,35 +138,6 @@ State lives in \$SNARE_HOME (default ~/.snare): logs, evidence, backups.
 USAGE
 }
 
-cmd_doctor(){
-  hdr "This machine"
-  if guard_scan_once >/dev/null 2>&1; then grn "  no malicious process running"
-  else red "  DETECTIONS — see $SNARE_LOGS/guard.log"; fi
-  launchctl list 2>/dev/null | grep -q com.snare.guard \
-    && grn "  guard is running" || ylw "  guard not installed (snare guard install)"
-
-  hdr "Persistence spots"
-  local n
-  for d in "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons; do
-    # find, not ls|grep: a filename containing a newline would break the count,
-    # and this counts persistence entries — the exact place to expect a
-    # deliberately awkward filename.
-    n="$(find "$d" -maxdepth 1 -mindepth 1 ! -name 'com.snare*' 2>/dev/null | wc -l | tr -d ' ')"
-    [ "${n:-0}" -gt 0 ] && ylw "  $d: $n entry(ies) — review" || grn "  $d: empty"
-  done
-  crontab -l >/dev/null 2>&1 && ylw "  crontab: present — review" || grn "  crontab: none"
-
-  hdr "GitHub"
-  if gh auth status >/dev/null 2>&1; then
-    grn "  authenticated as $(gh_user)"
-    echo "  token scopes: $(gh api -i user 2>/dev/null | awk -F': ' '/^[Xx]-[Oo]auth-[Ss]copes:/{print $2}' | tr -d '\r')"
-    echo "  repos reachable: $(gh api --paginate 'user/repos?affiliation=owner,collaborator,organization_member&per_page=100' --jq '.[].full_name' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
-  else ylw "  not authenticated — run: gh auth login"; fi
-  echo
-  dim "  next: snare respond    — guided clean-up in the right order"
-  dim "        snare scan github — just look, change nothing"
-}
-
 main(){
   local c="${1:-help}"; shift || true
   case "$c" in
@@ -173,11 +153,16 @@ main(){
             snare_baseline_filter "$_t" "$(cmd_scan_repo "$_t" 2>&1)"
           else cmd_scan_repo "$_t"; fi ;;
         github) cmd_scan_github "$@" ;;
+        orgs|owners) cmd_scan_orgs "$@" ;;
         "")     cmd_scan_repo "$PWD" ;;
         *)      cmd_scan_repo "$what" ;;
       esac ;;
     fix)
-      if [ "${1:-}" = "--all" ]; then shift; cmd_fix_all "$@"; else cmd_fix "$@"; fi ;;
+      case "${1:-}" in
+        --all)          shift; cmd_fix_all "$@" ;;
+        --pick|--select|--owner) cmd_fix_pick "$@" ;;
+        *)              cmd_fix "$@" ;;
+      esac ;;
     notify) cmd_notify "$@" ;;
     doctor) cmd_doctor ;;
     update) cmd_update "$@" ;;

