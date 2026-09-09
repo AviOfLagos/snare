@@ -75,7 +75,12 @@ jobs:
           echo "clean"
 
   # Prove the reusable workflow other people depend on still works end to end.
+  # Exercise the reusable workflow other repositories depend on, pinned to the
+  # code under review. github.head_ref names a branch that only exists on the
+  # contributor's fork, so it cannot be fetched from here — but GitHub
+  # publishes refs/pull/N/head on this repository for every pull request,
+  # including forks, so use that.
   reusable:
     uses: ./.github/workflows/scan.yml
     with:
-      snare-ref: ${{ github.head_ref || github.ref_name }}
+      snare-ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref_name }}
