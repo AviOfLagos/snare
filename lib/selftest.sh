@@ -220,6 +220,12 @@ _st_doctor(){
   local D
   D="$(mktemp -d "${TMPDIR:-/tmp}/snaredoctor.XXXXXX")" \
     || { _st_bad "cannot create a temp directory"; return 1; }
+  # Normalise. On macOS $TMPDIR ends in a slash, so $D carries a doubled one,
+  # while _doctor_npm_roots reports paths through `cd .. && pwd`, which
+  # collapses it. The assertion below then could never match its own fixture:
+  # the check failed on macOS while passing on Linux CI, reporting "detection
+  # is broken" for a detector that was working correctly.
+  D="$(cd "$D" && pwd)"
 
   mkdir -p "$D/bad/bin"  "$D/bad/lib/node_modules/npm/lib"
   mkdir -p "$D/good/bin" "$D/good/lib/node_modules/npm/lib"
