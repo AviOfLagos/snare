@@ -33,20 +33,33 @@ jobs:
         with:
           fetch-depth: ${{ inputs.full-history && 0 || 1 }}
 
+      # Cloned by hand rather than with actions/checkout, for two reasons.
+      #
+      # actions/checkout can only write inside the workspace, and a scanner
+      # sitting inside the repository it is scanning gets scanned too — snare's
+      # own docs quote every IOC verbatim. Cloning straight into RUNNER_TEMP
+      # keeps it out of the tree with no move step.
+      #
+      # And a fork's branch does not exist on this repository, so checking out
+      # inputs.snare-ref by branch name failed for every pull request from a
+      # fork — nobody outside the repo could get a green check. A ref that
+      # cannot be fetched now falls back to main with a warning rather than
+      # failing the job.
       - name: Check out snare
-        uses: actions/checkout@v4
-        with:
-          repository: AviOfLagos/snare
-          ref: ${{ inputs.snare-ref }}
-          path: .snare-tool-checkout
-
-      # actions/checkout can only write inside the workspace, but a scanner
-      # sitting inside the repo it is scanning gets scanned too — and snare's
-      # own docs quote every IOC verbatim. Move it out before scanning.
-      - name: Move the scanner out of the scanned tree
         run: |
-          mv .snare-tool-checkout "$RUNNER_TEMP/snare"
-          chmod +x "$RUNNER_TEMP/snare/bin/snare"
+          set -euo pipefail
+          ref='${{ inputs.snare-ref }}'
+          dest="$RUNNER_TEMP/snare"
+          git init --quiet "$dest"
+          git -C "$dest" remote add origin https://github.com/AviOfLagos/snare.git
+          if git -C "$dest" fetch --quiet --depth 1 origin "$ref" 2>/dev/null; then
+            echo "scanning with snare @ $ref"
+          else
+            echo "::warning::could not fetch snare ref '$ref' — falling back to main"
+            git -C "$dest" fetch --quiet --depth 1 origin main
+          fi
+          git -C "$dest" checkout --quiet FETCH_HEAD
+          chmod +x "$dest/bin/snare"
 
       # A scanner whose detection is broken must never report a green tick.
       # Four false-clean defects shipped exactly that way, so this gate runs
