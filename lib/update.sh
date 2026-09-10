@@ -45,6 +45,18 @@ snare_commits_behind(){
 
 # Cheap, quiet check used by `snare version`. Prints a nudge or nothing.
 snare_update_hint(){
+  # Prefer the cache. `snare version` used to run a live git fetch here, which
+  # made a command that prints one line take about five seconds on a slow link.
+  # `update --check` still does the live check, because there waiting is the
+  # point.
+  if [ -f "$UPDATE_CACHE" ]; then
+    local cb; cb="$(grep -m1 '^behind=' "$UPDATE_CACHE" 2>/dev/null | cut -d= -f2)"
+    if [ -n "$cb" ] && [ "$cb" -gt 0 ] 2>/dev/null; then
+      ylw "  $cb commit(s) behind — run: snare update"
+      return 0
+    fi
+    [ -n "$cb" ] && return 0
+  fi
   local behind; behind="$(snare_commits_behind 2>/dev/null)"
   if [ -n "$behind" ] && [ "$behind" -gt 0 ] 2>/dev/null; then
     ylw "  $behind commit(s) behind — run: snare update"
@@ -55,6 +67,89 @@ snare_update_hint(){
   ver_gt "$r" "$SNARE_VERSION" || return 0
   ylw "  a newer version is available: $r (you have $SNARE_VERSION)"
   dim "  run: snare update"
+}
+
+# ---------------------------------------------------------------- passive nudge
+#
+# `snare update --check` only helps someone who already suspects they are
+# behind. The people who most need the fixes are the ones who cloned once and
+# never thought about it again — several defects made the scanner report clean
+# on infected repositories, and a clean result is exactly what stops you
+# looking further.
+#
+# So every command surfaces it, subject to three rules:
+#   - it must never block or slow the command down, so the network check runs
+#     detached and only a CACHED answer is read on the hot path;
+#   - it must be quiet, so it prints one line and at most once a day;
+#   - it must send nothing. The check is a git ls-remote against a public
+#     repository — no identifiers, no telemetry, no phoning home.
+# SNARE_NO_UPDATE_CHECK=1 turns it off entirely.
+UPDATE_CACHE="$SNARE_HOME/update-state"
+
+# Refresh the cache. Runs detached; never writes to the terminal.
+snare_update_refresh(){
+  [ -d "$SNARE_ROOT/.git" ] || return 0
+  local remote local_sha behind
+  remote="$(git -C "$SNARE_ROOT" ls-remote origin HEAD 2>/dev/null | cut -f1)"
+  [ -z "$remote" ] && return 0
+  local_sha="$(git -C "$SNARE_ROOT" rev-parse HEAD 2>/dev/null)"
+  if [ "$remote" = "$local_sha" ]; then
+    behind=0
+  else
+    # Different tip. Count how far behind, fetching quietly; if the count is
+    # not obtainable, record 1 so the nudge still appears — being told to check
+    # when you are current is a smaller harm than never being told at all.
+    git -C "$SNARE_ROOT" fetch --quiet origin main 2>/dev/null
+    behind="$(git -C "$SNARE_ROOT" rev-list --count HEAD..origin/main 2>/dev/null)"
+    [ -z "$behind" ] && behind=1
+  fi
+  mkdir -p "$SNARE_HOME" 2>/dev/null
+  printf 'checked=%s
+behind=%s
+' "$(date +%s)" "$behind" > "$UPDATE_CACHE.tmp" 2>/dev/null     && mv "$UPDATE_CACHE.tmp" "$UPDATE_CACHE" 2>/dev/null
+}
+
+# Read the cached answer, print at most one line, and kick off a refresh in the
+# background when the cache is stale. Never blocks.
+snare_update_nudge(){
+  [ -n "${SNARE_NO_UPDATE_CHECK:-}" ] && return 0
+  [ -n "${CI:-}" ] && return 0
+  [ -t 1 ] || return 0            # not a terminal: stay out of pipes and logs
+
+  local now checked behind age
+  now="$(date +%s)"
+  checked=0; behind=0
+  if [ -f "$UPDATE_CACHE" ]; then
+    checked="$(grep -m1 '^checked=' "$UPDATE_CACHE" 2>/dev/null | cut -d= -f2)"
+    behind="$(grep -m1 '^behind=' "$UPDATE_CACHE" 2>/dev/null | cut -d= -f2)"
+  fi
+  [ -z "$checked" ] && checked=0
+  [ -z "$behind" ] && behind=0
+  age=$(( now - checked ))
+
+  if [ "$behind" -gt 0 ] 2>/dev/null; then
+    echo
+    ylw "  snare is $behind commit(s) behind — run: snare update"
+    dim  "  Versions before 1.1.0 could report a repository clean when it was not."
+  fi
+
+  # Stale (or never checked): try to refresh for next time, fully detached —
+  # stdin included, since a child still holding the terminal keeps the parent
+  # waiting, which is the blocking this exists to avoid.
+  #
+  # This is BEST EFFORT and nothing depends on it. The cache is also refreshed
+  # synchronously by the commands that already wait on the network (doctor,
+  # scan github, update --check), so it gets populated even where detaching
+  # does not survive — a short-lived terminal, a restrictive shell, a platform
+  # without the job control this assumes.
+  if [ "$age" -gt 86400 ] 2>/dev/null; then
+    # No setsid: macOS does not ship it, and the `||` fallback never fired
+    # because backgrounding succeeds even when the command does not exist.
+    # Redirecting all three streams is enough — measured at 0.09s.
+    # nohup so the refresh survives the terminal closing on a short command.
+    ( nohup "$SNARE_ROOT/bin/snare" _update-refresh </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
+  fi
+  return 0
 }
 
 cmd_update(){

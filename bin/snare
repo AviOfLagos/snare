@@ -173,6 +173,8 @@ main(){
     ci)     cmd_ci "$@" ;;
     shield) cmd_shield "$@" ;;
     rotate) cmd_rotate "$@" ;;
+    # internal: the detached cache refresh behind the update nudge
+    _update-refresh) snare_update_refresh; exit 0 ;;
     respond) cmd_respond "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v)
@@ -183,4 +185,10 @@ main(){
     *) red "unknown command: $c"; echo; usage; exit 2 ;;
   esac
 }
-main "$@"
+# One line, at most once a day, never blocking — see snare_update_nudge.
+# Runs after the command so it never delays output, and never changes the
+# command's own exit status.
+_snare_rc=0
+main "$@" || _snare_rc=$?
+snare_update_nudge 2>/dev/null || true
+exit "$_snare_rc"

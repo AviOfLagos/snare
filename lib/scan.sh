@@ -442,6 +442,8 @@ $(gh repo list "$o" --limit "$limit" --json nameWithOwner --jq '.[].nameWithOwne
     echo "                               snare fix --all             (dry run)"
     echo "  4. Then tell collaborators.  snare notify <owner/repo>"
   fi
+  # Same reasoning as doctor: this command already waited on the network.
+  snare_update_refresh 2>/dev/null || true
   echo "report: $report"
 }
 
