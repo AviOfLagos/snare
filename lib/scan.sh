@@ -24,8 +24,12 @@ cmd_scan_repo(){
       SELF=1
       # promo/ and docs/ quote every IOC verbatim; they are write-ups about the
       # malware, not the malware. Without them snare cannot pass its own CI.
+      # The plugin manifest and the skill describe the malware, so they quote
+      # its keywords the same way promo/ and docs/ do. Excluded only when the
+      # .snare-tool marker is present, i.e. only in snare's own checkout.
       EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude-dir=docs --exclude-dir=promo
-            --exclude-dir=.github --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
+            --exclude-dir=.github --exclude-dir=.claude-plugin --exclude-dir=skills
+            --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
       dim "  (snare's own source tree — its detection patterns are excluded)"
     fi
 

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "snare",
+  "description": "snare — supply-chain malware scanner for Git repos.",
+  "owner": {
+    "name": "David Olatunji",
+    "url": "https://github.com/AviOfLagos"
+  },
+  "plugins": [
+    {
+      "name": "snare",
+      "source": "./",
+      "version": "1.1.0",
+      "description": "Finds supply-chain droppers committed directly into a repository — the kind npm audit cannot see because there is no malicious dependency. Scans a clone or every repo you can reach, removes the payload including from history, and helps warn collaborators.",
+      "author": {
+        "name": "David Olatunji",
+        "url": "https://github.com/AviOfLagos"
+      },
+      "homepage": "https://avioflagos.github.io/snare/",
+      "license": "MIT",
+      "category": "security",
+      "keywords": [
+        "security",
+        "supply-chain",
+        "malware-scanner",
+        "shai-hulud",
+        "incident-response",
+        "devsecops"
+      ]
+    }
+  ]
+}

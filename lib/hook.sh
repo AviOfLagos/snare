@@ -55,6 +55,7 @@ _hook_run(){
     if [ "$SELF" = 1 ]; then
       case "$f" in
         lib/*|bin/*|docs/*|promo/*|iocs.txt|README.md|CHANGELOG.md|.github/*) continue ;;
+        .claude-plugin/*|skills/*) continue ;;
       esac
     fi
 
