@@ -130,6 +130,11 @@ cmd_doctor(){
   hdr "Node and npm"
   _doctor_node
 
+  # Refresh the update cache here: doctor already waits on the network, so this
+  # adds nothing a user notices, and it means the nudge works even when the
+  # detached background refresh does not.
+  snare_update_refresh 2>/dev/null || true
+
   hdr "GitHub"
   if gh auth status >/dev/null 2>&1; then
     grn "  authenticated as $(gh_user)"
