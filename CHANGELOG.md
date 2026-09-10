@@ -182,6 +182,88 @@ Campaign `A8-4893-2`, two stages with two unrelated C2 addresses:
   and that a genuine font, a clean source file and an honest build task are left
   alone. 24 checks in total.
 
+## [1.2.0] — 2026-09-10
+
+Remediation could delete the file it was meant to clean. If you ran
+`snare fix --push` on a release before this one, check the repository: a build
+config may have been removed rather than repaired.
+
+### Fixed — destructive behaviour
+
+- **`fix` deleted the build config instead of cleaning it.** The delete pass
+  removed any file matching an IOC string, and a payload appended to
+  `postcss.config.mjs` *is* an IOC string — so the file was gone before the
+  strip pass further down the same function could reach it. It pushed a commit
+  that removed the malware and the project's build with it. Stripping runs
+  first now, and a file the project needs is cleaned and kept, never deleted.
+  Reported and fixed by @phoenixdahdev. (#39)
+- **`.vscode/tasks.json` was deleted whole**, losing honest build tasks along
+  with the injected `folderOpen` one. Only the malicious task goes now. (#39)
+- **A payload on a line of its own was never removed.** Both cleaners keyed on
+  the one-line signature. The new rule is gated narrowly — long, minified in
+  shape, a hard campaign marker *and* obfuscated code — because dropping a
+  whole line on a weaker signal is itself destructive. (#39)
+
+### Fixed — detection and coverage
+
+- **Worm artifacts and fake assets are now found by filename and magic bytes**
+  during remediation, not only during scanning: `scan` reported them and `fix`
+  walked straight past. (#39)
+- **npm's own `lib/cli.js` is checked.** A live host was found with ~1.4MB
+  appended to it after 200 spaces, so every `npm` invocation ran the loader —
+  `--ignore-scripts` does not help, because it is the package manager itself
+  and not a package script. New campaign `A8-4893-2`, with two C2 addresses and
+  a socket.io RAT held by a crontab `@reboot` line. (#39)
+- The doctor fixture path is normalised, so the npm check no longer failed on
+  macOS while passing on Linux — the suite reported "detection is broken" for a
+  detector that was working correctly. (#39)
+
+### Fixed — contribution and platform
+
+- **No pull request from a fork could ever pass CI.** `ci.yml` passed
+  `github.head_ref` to the reusable workflow, which then tried to check that
+  ref out of this repository — a fork's branch does not exist here, so checkout
+  failed three times before a single check ran. The first outside contribution
+  hit it, and the failure looked like the contributor's fault rather than ours.
+  It uses `refs/pull/N/head` now. (#40)
+- **Windows `guard install` failed with no explanation.** `schtasks.exe` needs
+  a Windows path and was handed an MSYS one, and every error was discarded. It
+  now converts the path, prints the real error, and falls back to a Startup
+  entry that needs no administrator rights. (#32)
+- snare flagged its own plugin manifest and skill, which quote the malware's
+  keywords because they describe it. (#38)
+
+### Added
+
+- **`snare respond`** — one guided clean-up instead of nine commands, in the
+  order that actually works: rotate credentials, clean the machine you push
+  from, then the repositories, then tell your collaborators. Resumable, asks
+  before every action, refuses to run unattended. (#33, #34)
+- **A passive update notice.** Every command now says, at most once a day and
+  in one line, when the installation is behind. It never blocks — the check is
+  cached and refreshed off the command path — sends nothing, and is off with
+  `SNARE_NO_UPDATE_CHECK=1`. The people who most need the fixes are the ones
+  who cloned once and never thought about it again. (#41)
+- **snare ships as a Claude Code plugin**, so a coding agent can find and run
+  it. (#38)
+- An incident-response walkthrough on the site, and a copy-paste prompt for
+  people who would rather have an AI assistant do the work — written to forbid
+  the assistant from running anything destructive without asking. (#36)
+
+### Changed
+
+- Post-scan guidance leads with rotating credentials and cleaning your machine,
+  not with `snare fix`. Cleaning repositories first is wasted work while the
+  machine that pushes to them is still infected. (#31)
+- The notify templates lead with rotation too, and carry the full list
+  including the clipboard and the Actions workflow that keeps exfiltrating
+  after the dropper is gone. (#32)
+- `snare version` no longer runs a live fetch to decide whether to nudge; a
+  one-line command took about five seconds on a slow link. (#41)
+- The site is a multi-page field guide with corrected document semantics, a
+  crawler policy naming 29 search and AI crawlers, `llms.txt`, and structured
+  data on every page. (#33, #35, #37)
+
 ## [1.1.0] — 2026-08-29
 
 Everything since the initial release. If you installed snare before this,

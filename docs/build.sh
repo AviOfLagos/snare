@@ -17,6 +17,8 @@ cd "$(dirname "$0")"
 
 SITE="https://avioflagos.github.io/snare/"
 REPO="https://github.com/AviOfLagos/snare"
+tmp_rel="$(mktemp "${TMPDIR:-/tmp}/snarerel.XXXXXX")"
+trap 'rm -f "$tmp_rel"' EXIT
 VERSION="$(sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' ../CHANGELOG.md | head -1)"
 [ -n "$VERSION" ] || { echo "could not read version from ../CHANGELOG.md" >&2; exit 1; }
 
@@ -201,7 +203,21 @@ NAVTOP
 NAVBOT
 
     # ---- body ----
-    grep -v '^<!--#' "$src"
+    # <!--#releases--> becomes the release notes rendered from CHANGELOG.md.
+    # They used to be written twice — there and as hand-written HTML here — so
+    # the site could claim a fix had shipped when it had not. One source now.
+    if grep -q '<!--#releases-->' "$src"; then
+      python3 changelog-gen.py ../CHANGELOG.md > "$tmp_rel" \
+        || { echo "changelog-gen failed for $src" >&2; exit 1; }
+      grep -v '^<!--#' "$src" | while IFS= read -r line; do
+        case "$line" in
+          *'<!--#releases-->'*) cat "$tmp_rel" ;;
+          *) printf '%s\n' "$line" ;;
+        esac
+      done
+    else
+      grep -v '^<!--#' "$src"
+    fi
 
     # ---- pager ----
     if [ -n "$prev" ] || [ -n "$next" ]; then

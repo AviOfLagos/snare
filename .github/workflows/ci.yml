@@ -53,6 +53,20 @@ jobs:
           [ "$missing" = 0 ] && echo "help covers every top-level command"
           exit $missing
 
+      # The site's release notes are generated from CHANGELOG.md, so a version
+      # bump with no changelog entry would ship a page that silently omits the
+      # release. Fail here rather than there.
+      - name: Version has a changelog entry, and the site regenerates
+        run: |
+          v="$(grep -m1 '^SNARE_VERSION=' bin/snare | cut -d'"' -f2)"
+          grep -q "^## \[$v\]" CHANGELOG.md \
+            || { echo "::error::SNARE_VERSION is $v but CHANGELOG.md has no ## [$v] entry"; exit 1; }
+          echo "changelog has an entry for $v"
+          python3 docs/changelog-gen.py CHANGELOG.md > /tmp/rel.html
+          grep -q "id=\"v$(echo "$v" | tr . -)\"" /tmp/rel.html \
+            || { echo "::error::changelog-gen produced no section for $v"; exit 1; }
+          echo "release notes render for $v"
+
       - name: Detection works (selftest)
         run: |
           chmod +x bin/snare
