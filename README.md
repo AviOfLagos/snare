@@ -58,6 +58,23 @@ gh auth login          # your own account — snare ships no token
 snare doctor
 ```
 
+### For coding agents — Claude Code
+
+```
+/plugin marketplace add AviOfLagos/snare
+/plugin install snare@snare
+```
+
+This installs a skill that teaches the agent **when** to scan — a fresh clone,
+before the first build, before opening an unfamiliar repo in an editor — and
+which commands are safe to run unprompted. Scanning is read-only and needs no
+permission; `fix --purge-history`, `notify` and `guard install` are gated behind
+explicit human confirmation, because they rewrite published history, open public
+issues, or install a background process.
+
+The skill still needs the CLI above installed; it wraps snare, it does not
+replace it.
+
 ### Requirements
 
 **Required everywhere:** `bash`, `git`, `python3`, `gh` ([GitHub CLI](https://cli.github.com)).
