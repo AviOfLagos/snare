@@ -66,11 +66,23 @@ snare respond --reset           start the walkthrough again</pre></div></div>
       <div class="scroller"><pre>snare scan                      scan the current directory
 snare scan repo [path]          one clone: working tree, all branches, full history
 snare scan repo [path] --new    only findings that are not in the baseline
+snare scan orgs                 list every org/account you can reach, with repo counts
+snare scan orgs --all           include individual accounts, not just organisations
 snare scan github               every repo you can reach, via the API (no cloning)
+snare scan github --pick        choose which orgs to scan, from a list
+snare scan github --owner a,b   only these orgs/accounts (comma-separated)
 snare scan github --mine        only repos you own
 snare scan github --all-branches
 snare doctor                    this machine, persistence spots, and your GitHub account
 snare selftest                  prove detection still works against known samples</pre></div></div>
+
+    <p class="note"><strong>Scanning everything is often the wrong first move.</strong>
+    A real account reaches further than people expect — one we tested sees 22
+    organisations and roughly 950 repositories, which is several thousand API calls.
+    <code>scan orgs</code> lists what is reachable and how big each owner is, so you can
+    start with the ones that matter; <code>scan github --pick</code> shows the same list
+    and lets you choose from it. The repo counts are the number
+    <code>--owner</code> will actually scan, not an estimate.</p>
 
     <p class="note"><strong>Read this before trusting a clean result.</strong>
     <code>scan github</code> reads <em>branch tips through the API</em>. It cannot see
@@ -144,6 +156,9 @@ snare ci print                  print the workflow without writing it</pre></div
 snare fix &lt;owner/repo&gt; --push                 clean branch tips and push
 snare fix &lt;owner/repo&gt; --purge-history --push erase it from all history
 snare fix --all                               every repo the last scan flagged
+snare fix --pick                              choose orgs, scan them, then fix
+snare fix --pick --purge-history --push       ... and erase it from all history
+snare fix --owner a,b --push                  the same, without the prompt
 
 snare rotate                    what to revoke, in order, plus a GitHub audit
 snare notify &lt;owner/repo&gt;       list collaborators and preview the notice
@@ -156,6 +171,16 @@ snare notify &lt;owner/repo&gt; --issue | --mail</pre></div></div>
     trojanised versions of your other packages under your name — and audits your GitHub
     account for the repositories and secret-exporting workflows this family leaves behind.
     The full sequence is on the <a href="infected.html">response page</a>.</p>
+
+    <p class="note"><strong><code>fix --pick</code> is the whole clean-up in one pass:</strong>
+    choose organisations from the same list <code>scan orgs</code> prints, scan them, then
+    remediate what was found. It is a dry run unless you add <code>--push</code>, and the
+    destructive flags stay on the command line rather than hiding inside a friendlier verb —
+    force-pushing rewritten history across an organisation should be legible in your shell
+    history. <code>--owner a,b</code> is the same thing without the prompt, for a script or a
+    timer. With <code>--purge-history</code> it checks for <code>git-filter-repo</code>
+    <em>before</em> scanning, rather than after asking you to choose and then failing on the
+    first repository.</p>
 
     <p class="note"><code>--purge-history</code> rewrites every commit, so every SHA changes.
     Collaborators must <em>re-clone</em>, not pull, and forks and pull-request refs still

@@ -53,3 +53,18 @@ _H2
 node[[:space:]]+\./public/fonts/.*\.woff2
 \.woff2['\"]?\)?[[:space:]]*\|\|
 "label":[[:space:]]*"eslint-check"
+#
+# --- Campaign A8-4893-2, observed LIVE on an infected host 2026-09-06..08.
+#     Two stages, two different C2s, neither reachable by blocking one IP:
+#       1. npm's own lib/cli.js patched in place — 1.4MB appended after 200
+#          spaces, so every `npm` invocation runs the loader. `ignore-scripts`
+#          does not help: it is the package manager, not a package script.
+#       2. a socket.io RAT dropped to ~/.local/share/<random>.js, held by a
+#          crontab @reboot line, logging to a decoy "VSCodeUpdater.log". ---
+193\.247\.144\.38
+194\.11\.226\.41
+/\*RS260605\*/
+/\*M260630A\*/
+global\['e'\][[:space:]]*=[[:space:]]*['\"]NPM['\"]
+[[:space:]]--token[[:space:]]+.?http://[0-9.]+:[0-9]+\|
+VSCodeUpdater\.log

@@ -112,11 +112,16 @@ snare guard log
 
 # FIND
 snare scan repo .              # one clone: tree, every branch, full history
+snare scan orgs                # which orgs/accounts you can reach, and how big
+snare scan github --pick       # choose which of them to scan, from a list
+snare scan github --owner a,b  # or name them directly
 snare scan github              # every repo you can reach, via API, no cloning
 snare scan github --all-branches
 
 # FIX  (always backs up to ~/.snare/backups first)
 snare fix owner/repo                            # dry run
+snare fix --pick                                # pick orgs, scan them, then fix
+snare fix --pick --purge-history --push         # ... and erase it from all history
 snare fix owner/repo --push                     # clean branch tips
 snare fix owner/repo --purge-history --push     # erase from all history
 
