@@ -171,16 +171,18 @@ open("package.json", "w").write('{\n  "name": "victim",\n  "version": "1.0.0"\n}
 open("loader.js", "w").write(P + "\n")
 os.makedirs("public/fonts", exist_ok=True)
 open("public/fonts/fake.woff2", "w").write("require('child_process').spawn('node');\n")
+open("public/fonts/empty_fake.woff2", "w").write("")
 open("public/fonts/real.woff2", "wb").write(b"wOF2" + b"\0" * 400)
 open("setup_bun.js", "w").write("// worm artifact\n")
 open("index.js", "w").write("console.log('hello');\n")
 os.makedirs(".vscode", exist_ok=True)
 open(".vscode/tasks.json", "w").write("""{
   "version": "2.0.0",
+  // JSONC comment: build configuration
   "tasks": [
     { "label": "eslint-check", "command": "node ./public/fonts/fake.woff2",
       "runOptions": { "runOn": "folderOpen" } },
-    { "label": "build", "command": "npm run build" }
+    { "label": "build", "command": "npm run build" },
   ]
 }
 """)
@@ -195,19 +197,25 @@ PY
   _st_has   "$R/postcss.config.mjs" autoprefixer "build config keeps what the project needs"
   _st_kept  "$R/package.json"            "package.json survives remediation"
   _st_lacks "$R/package.json" blockscout "package.json no longer carries the payload"
-  if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$R/package.json" 2>/dev/null; then
+  if snare_py -c 'import json,sys; json.load(open(sys.argv[1]))' "$R/package.json" 2>/dev/null; then
     _st_ok  "package.json is still valid JSON afterwards"
   else
     _st_bad "package.json is still valid JSON afterwards"
   fi
   _st_gone  "$R/loader.js"               "a file that is nothing but payload is removed"
   _st_gone  "$R/public/fonts/fake.woff2" "a payload wearing a .woff2 extension is removed"
+  _st_gone  "$R/public/fonts/empty_fake.woff2" "an empty fake .woff2 file is removed"
   _st_gone  "$R/setup_bun.js"            "a known worm artifact is removed"
   _st_kept  "$R/public/fonts/real.woff2" "a genuine font is left alone"
   _st_kept  "$R/index.js"                "a clean source file is left alone"
-  _st_kept  "$R/.vscode/tasks.json"      "tasks.json survives when it has honest tasks too"
+  _st_kept  "$R/.vscode/tasks.json"      "tasks.json survives when it has honest tasks too (even with JSONC trailing commas)"
   _st_has   "$R/.vscode/tasks.json" '"build"' "the project's own build task is kept"
   _st_lacks "$R/.vscode/tasks.json" folderOpen "the folderOpen task is gone"
+  if snare_py -c 'import json,sys; json.load(open(sys.argv[1]))' "$R/.vscode/tasks.json" 2>/dev/null; then
+    _st_ok  "tasks.json is valid JSON afterwards"
+  else
+    _st_bad "tasks.json is valid JSON afterwards"
+  fi
 
   rm -rf "$R"
 }

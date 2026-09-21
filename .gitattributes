@@ -1,0 +1,8 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Shell scripts must always use LF (POSIX line endings)
+*.sh text eol=lf
+*.bash text eol=lf
+bin/snare text eol=lf
+iocs.txt text eol=lf

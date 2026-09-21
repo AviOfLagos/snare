@@ -7,7 +7,7 @@
 # had drifted apart, and only one of them was ever reached.
 _fix_strip_core(){
   cat <<'PY'
-import re
+import json, re
 
 # A. The documented signature: real code, a long run of whitespace, then the
 #    payload appended to the SAME line, so the file looks untouched in an
@@ -36,9 +36,42 @@ def _dense(ln):
     """Minified-shaped. Prose is mostly spaces; an appended payload is not."""
     return ln.count(b' ') * 10 < len(ln)
 
+def _clean_tasks(data):
+    """Strip malicious folderOpen tasks from tasks.json blobs."""
+    try:
+        content = data.decode('utf-8', errors='ignore')
+        if 'folderopen' not in content.lower() or '"tasks"' not in content.lower():
+            return data, False
+        # Pre-process JSONC comments and trailing commas
+        clean_json = re.sub(r'//.*?\n', '\n', content)
+        clean_json = re.sub(r'/\*.*?\*/', '', clean_json, flags=re.DOTALL)
+        clean_json = re.sub(r',(\s*[}\]])', r'\1', clean_json)
+        d = json.loads(clean_json)
+        tasks = d.get("tasks", [])
+        if not isinstance(tasks, list):
+            return data, False
+        kept = []
+        changed = False
+        for t in tasks:
+            ro = t.get("runOptions") or {} if isinstance(t, dict) else {}
+            if str(ro.get("runOn", "")).lower() == "folderopen":
+                changed = True
+            else:
+                kept.append(t)
+        if changed:
+            d["tasks"] = kept
+            return json.dumps(d, indent=2).encode('utf-8') + b'\n', True
+    except Exception:
+        pass
+    return data, False
+
 def clean(data):
     """Strip the payload and KEEP the file. Returns (data, changed)."""
-    out, changed = [], False
+    t_data, t_changed = _clean_tasks(data)
+    if t_changed:
+        data = t_data
+
+    out, changed = [], t_changed
     for ln in data.split(b'\n'):
         m = LINE.match(ln)
         if m and _payload(m.group(2)):
@@ -56,7 +89,7 @@ def clean(data):
 
 def residue(data):
     """Hard markers still present after cleaning: the file IS the dropper."""
-    return bool(MARK.search(data.lower()))
+    return bool(MARK.search(data.lower()) or (b'folderopen' in data.lower() and b'"tasks"' in data.lower()))
 PY
 }
 
@@ -126,10 +159,15 @@ PY
 # build and test tasks along with the malicious one.
 _fix_tasks_prog(){
   cat <<'PY'
-import json, sys
+import json, re, sys
 p = sys.argv[1]
 try:
-    d = json.loads(open(p, 'rb').read())
+    content = open(p, 'rb').read().decode('utf-8', errors='ignore')
+    # Pre-process JSONC comments and trailing commas before object/array close
+    clean_json = re.sub(r'//.*?\n', '\n', content)
+    clean_json = re.sub(r'/\*.*?\*/', '', clean_json, flags=re.DOTALL)
+    clean_json = re.sub(r',(\s*[}\]])', r'\1', clean_json)
+    d = json.loads(clean_json)
     tasks = d["tasks"]
     if not isinstance(tasks, list):
         raise ValueError
@@ -150,6 +188,21 @@ elif kept:
     print("STRIPPED\t" + ", ".join(removed))
 else:
     print("EMPTY\t" + ", ".join(removed))
+PY
+}
+
+# Filename filter for git-filter-repo during history purges.
+_fix_filename_prog(){
+  cat <<'PY'
+import os
+base = os.path.basename(filename).lower()
+# Drop known worm artifacts
+if base in (b'setup_bun.js', b'bun_environment.js') or base.startswith(b'shai-hulud') or base.startswith(b'trufflesecrets'):
+    return None
+# Drop fake font droppers
+if base.endswith((b'.woff2', b'.woff', b'.ttf', b'.otf')) and (b'fa-solid-500' in base or b'fake' in base):
+    return None
+return filename
 PY
 }
 
@@ -184,7 +237,7 @@ _fix_clean_tree(){
 
   # ---- 1. editor auto-execution, surgically ------------------------------
   if [ -f .vscode/tasks.json ] && grep -q folderOpen .vscode/tasks.json 2>/dev/null; then
-    verdict="$(python3 -c "$(_fix_tasks_prog)" .vscode/tasks.json 2>/dev/null)"
+    verdict="$(snare_py -c "$(_fix_tasks_prog)" .vscode/tasks.json 2>/dev/null)"
     case "${verdict%%$'\t'*}" in
       STRIPPED)
         git add .vscode/tasks.json 2>/dev/null
@@ -237,7 +290,7 @@ _fix_clean_tree(){
 
     # Strip it, and keep the file if anything real
     #     survives. This is the case the old code never reached.
-    verdict="$(python3 -c "$(_fix_strip_prog file)" "$f" 2>/dev/null)"
+    verdict="$(snare_py -c "$(_fix_strip_prog file)" "$f" 2>/dev/null)"
     case "$verdict" in
       STRIPPED)
         git add "$f" 2>/dev/null
@@ -466,8 +519,8 @@ cmd_fix(){
 
   hdr "3. Findings"
   local found=0 ref br
-  for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
-    br="${ref#origin/}"
+  for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+    br="${ref#refs/remotes/origin/}"
     git show "$ref:.vscode/tasks.json" 2>/dev/null | grep -q folderOpen \
       && { red "  [$br] .vscode/tasks.json runOn:folderOpen"; found=1; }
     local m; m="$(git grep -InE "$pattern" "$ref" -- 2>/dev/null | head -3)"
@@ -499,24 +552,35 @@ cmd_fix(){
   if [ "$purge" = 1 ]; then
     hdr "4. Purge from all history"
     need git-filter-repo
-    git filter-repo --force --blob-callback "$(_fix_strip_prog blob)" 2>&1 | tail -4
+    # Checkout all remote branches locally so git-filter-repo rewrites all heads
+    for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+      br="${ref#refs/remotes/origin/}"
+      git checkout -q -B "$br" "$ref" 2>/dev/null || true
+    done
+    git filter-repo --force \
+      --blob-callback "$(_fix_strip_prog blob)" \
+      --filename-callback "$(_fix_filename_prog)" 2>&1 | tail -4
     # Verify by re-running the same cleaner over every blob, not by grepping
     # for one marker string a variant need not contain.
     local left
     left="$(git rev-list --objects --all 2>/dev/null | awk '{print $1}' \
             | git cat-file --batch-check='%(objectname) %(objecttype) %(objectsize)' 2>/dev/null \
             | awk '$2=="blob" && $3<400000 {print $1}' \
-            | python3 -c "$(_fix_strip_prog verify)" 2>/dev/null)"
+            | snare_py -c "$(_fix_strip_prog verify)" 2>/dev/null)"
     echo "  blobs still carrying a hidden payload: ${left:-unknown}"
     [ "${left:-1}" != "0" ] && die "purge incomplete — not pushing"
     git remote add origin "https://github.com/$repo.git" 2>/dev/null || \
       git remote set-url origin "https://github.com/$repo.git"
     if [ "$push" = 1 ]; then
       ylw "  force-pushing rewritten history (refs/heads only)"
-      local r
+      local r push_err=0
       for r in $(git for-each-ref --format='%(refname)' refs/heads); do
-        GIT_TERMINAL_PROMPT=0 git push --force origin "$r:$r" 2>&1 | tail -2
+        if ! GIT_TERMINAL_PROMPT=0 git push --force origin "$r:$r" 2>&1 | tail -2; then
+          red "  push failed for $r"
+          push_err=1
+        fi
       done
+      [ "$push_err" = 1 ] && die "one or more branches failed to push — check network and permissions"
       red "  Collaborators MUST re-clone. Forks, PR refs and old SHAs still hold it —"
       red "  ask GitHub Support to garbage-collect unreachable objects."
     else ylw "  rewritten locally, not pushed. Inspect: cd $src"; fi
@@ -524,8 +588,9 @@ cmd_fix(){
   fi
 
   hdr "4. Clean branch tips"
-  for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
-    br="${ref#origin/}"
+  local push_err=0
+  for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+    br="${ref#refs/remotes/origin/}"
     git checkout -q -B "$br" "$ref" 2>/dev/null || continue
     if _fix_clean_tree "$br" "$pattern"; then
       git commit -q -m "security: remove supply-chain malware dropper
@@ -533,9 +598,17 @@ cmd_fix(){
 Found by snare. Files the project needs (build configs, package.json) were
 stripped of the payload and kept; files that were payload only were removed.
 See the security issue on this repository for detail."
-      [ "$push" = 1 ] && GIT_TERMINAL_PROMPT=0 git push -q origin "$br" && grn "  [$br] pushed"
+      if [ "$push" = 1 ]; then
+        if GIT_TERMINAL_PROMPT=0 git push -q origin "$br"; then
+          grn "  [$br] pushed"
+        else
+          red "  [$br] push failed"
+          push_err=1
+        fi
+      fi
     fi
   done
+  [ "$push_err" = 1 ] && die "one or more branches failed to push — check network and permissions"
   [ "$push" = 0 ] && ylw "  not pushed (add --push)"
   ylw "  Tip-only cleaning leaves the payload in history — use --purge-history for a full fix."
 }

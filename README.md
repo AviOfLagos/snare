@@ -84,16 +84,16 @@ replace it.
 |---|---|---|
 | **macOS** | `brew install git gh python3` <br> `brew install git-filter-repo` | `launchd` user agent |
 | **Linux** | Debian/Ubuntu: `sudo apt install -y git python3` + [gh repo](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) <br> Fedora: `sudo dnf install -y git python3 gh` <br> Arch: `sudo pacman -S git python github-cli` | `systemd --user` unit |
-| **Windows** | `winget install Git.Git GitHub.cli Python.Python.3.12` <br> then run snare from **Git Bash** | logon **Scheduled Task** |
+| **Windows** | `winget install Git.Git GitHub.cli Python.Python.3.12` <br> run via **PowerShell** (`snare.ps1`), **cmd** (`snare.cmd`), or **Git Bash** | logon **Scheduled Task** |
 | **WSL** | as Linux | `systemd --user` (if enabled) |
 
 ### Platform notes, honestly
 
 - **macOS and Linux are first-class.** Everything works, including the
   background guard.
-- **Windows needs Git Bash or WSL.** snare is bash; it does not run in `cmd`
-  or bare PowerShell. Under Git Bash, `scan` / `fix` / `notify` work fully and
-  `snare guard install` registers a logon Scheduled Task.
+- **Windows supports PowerShell, CMD, and Git Bash.** Native PowerShell (`bin/snare.ps1`)
+  and batch (`bin/snare.cmd`) launchers forward execution to Git Bash automatically, so you can
+  run snare directly from PowerShell. `snare guard install` registers a logon Scheduled Task.
 - **Under WSL the guard only sees processes inside WSL**, not Windows itself.
   If you develop on Windows proper, run snare from Git Bash.
 - **Linux without systemd:** run the guard yourself —

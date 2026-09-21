@@ -83,6 +83,13 @@ else
   echo "            (symlinks unavailable on this platform; a stub was written instead)"
 fi
 
+if [ "$OS" = windows ]; then
+  cp -f "$SRC/bin/snare.ps1" "$BIN/snare.ps1" 2>/dev/null || true
+  cp -f "$SRC/bin/snare.cmd" "$BIN/snare.cmd" 2>/dev/null || true
+  echo "  powershell: $BIN/snare.ps1"
+  echo "  cmd:        $BIN/snare.cmd"
+fi
+
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo

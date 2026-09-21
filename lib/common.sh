@@ -79,6 +79,14 @@ require_gh(){
 }
 
 
+# Portable python runner across Ubuntu/Debian, macOS, and Windows
+snare_py(){
+  if command -v python3 >/dev/null 2>&1; then python3 "$@"
+  elif command -v python >/dev/null 2>&1; then python "$@"
+  elif command -v py >/dev/null 2>&1; then py -3 "$@"
+  else die "Python 3 is required but not installed"; fi
+}
+
 # --- portable primitives ---------------------------------------------------
 # First four bytes of a file as lowercase hex, e.g. "774f4632" (wOF2).
 # xxd ships with vim and is absent on minimal Linux images and some Git Bash
@@ -91,6 +99,9 @@ magic4(){ head -c 4 "$1" 2>/dev/null | od -An -v -tx1 2>/dev/null | tr -d ' \n';
 # "Undeterminable" deliberately counts as fine: refusing to guess beats
 # accusing a user's assets because a tool was missing.
 is_font(){
+  [ -f "$1" ] || return 0
+  # A 0-byte file wearing a font extension is never a real font (often a dropper placeholder)
+  [ ! -s "$1" ] && return 1
   local m; m="$(magic4 "$1")"
   [ -z "$m" ] && return 0
   case "$m" in
