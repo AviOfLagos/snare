@@ -173,6 +173,24 @@ Campaign `A8-4893-2`, two stages with two unrelated C2 addresses:
   instead of `--all-branches`, or any other typo, quietly scanned every
   repository you can reach rather than the narrower thing you asked for. Unknown
   flags are now an error, as they already were in `report` and `respond`.
+- **The local `scan repo` lost its primary detector on Debian and Ubuntu.**
+  The structural test — code, a long whitespace run, then more code, the signal
+  that catches a variant carrying none of the IOC strings — was an `awk`
+  interval expression, `{50,}`. `mawk`, the default `awk` on Debian and Ubuntu,
+  accepts that syntax and matches nothing, so the test never fired there: a
+  repository whose only infection was a payload padded past a run of whitespace
+  came back `No IOC matches`, exit 0. It reported clean on an infected
+  repository, which is the failure this changelog lists first. The test now
+  runs through `grep -E`, the same engine `scan github`, `fix` and `hook`
+  already use for that pattern, and the `selftest` sample it is checked against
+  no longer carries an IOC string of its own — it did, so the test passed
+  through the working-tree IOC grep and never exercised the structural test at
+  all.
+- **The by-hand long-line command on the inspection page never looked at the
+  file types the payload lands in.** It globbed `*.js`, so `postcss.config.mjs`
+  and `tailwind.config.mjs` — the file every live infection of this campaign
+  sits in — were not passed to `awk` at all. It now also matches `*.mjs` and
+  `*.cjs`, the same set `scan repo` walks.
 
 ### Added — test coverage
 

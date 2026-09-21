@@ -113,25 +113,34 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     [ -n "$art" ] && while IFS= read -r f; do _hit "known worm artifact: $f"; done <<< "$art"
 
     hdr "4. Hidden-payload heuristic (code hidden past whitespace)"
-    local lng
+    local files hid lng
     # Two signals: the structural one (code, a long whitespace run, then more
     # code) catches a payload of ANY length; the raw-length one catches a
     # minified blob that hides without a whitespace run. Length alone missed
     # real samples, so the structural test is primary.
-    lng="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
+    #
+    # The structural test runs through grep, not awk. mawk — the default awk on
+    # Debian and Ubuntu — accepts but silently ignores {50,} interval
+    # expressions, so the awk form matched nothing and the primary test was a
+    # no-op on those hosts. grep -E is the engine _scan_ref, fix and hook
+    # already use for this exact pattern.
+    files="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
         -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
-        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/\|/promo/' || cat; } \
-        | xargs awk '/[^ \t][ \t]{50,}[^ \t]/ {print "HIT "FILENAME" line "FNR" ("length" chars)"; nextfile}
-                     length > 1500 {print "LONG "FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -20)"
+        | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/\|/promo/' || cat; } )"
+    hid="$(printf '%s\n' "$files" | xargs grep -lE '[^[:space:]][[:space:]]{50,}[^[:space:]]' 2>/dev/null | head -20)"
+    lng="$(printf '%s\n' "$files" | xargs awk 'length > 1500 {print "LONG "FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -20)"
     local anyhit=0
+    if [ -n "$hid" ]; then
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        _hit "$f — code hidden past a run of whitespace"; anyhit=1
+      done <<< "$hid"
+    fi
     if [ -n "$lng" ]; then
       while IFS= read -r l; do
-        case "$l" in
-          HIT\ *)  _hit "${l#HIT } — code hidden past a run of whitespace"; anyhit=1 ;;
-          # A long line on its own is weak evidence: minified bundles are
-          # legitimately long. Report it, but do not count it as a finding.
-          LONG\ *) _note "${l#LONG } — very long line (minified code looks like this too)" ;;
-        esac
+        # A long line on its own is weak evidence: minified bundles are
+        # legitimately long. Report it, but do not count it as a finding.
+        _note "${l#LONG } — very long line (minified code looks like this too)"
       done <<< "$lng"
     fi
     [ "$anyhit" = 0 ] && grn "  no code hidden past whitespace"
@@ -488,7 +497,11 @@ $hooks
     echo "$body" | grep -qE "$pattern" && hits="${hits}    $f matches IOC @$REF
 "
   done < <(echo "$tree" | grep -E '(^|/)package\.json$' | grep -v node_modules | head -3)
-  # Build configs: the second documented execution route (next dev / next build).
+  # Auto-loaded configs: the documented execution routes. next dev / next build
+  # require()s the postcss/next configs, and ESLint's flat config (eslint.config.*)
+  # runs in an editor with the ESLint extension on folder open, and in any lint
+  # script. That pattern is the only thing that fetches these files, so omit
+  # eslint here and an infection in an eslint config is invisible to the API scan.
   # The payload is obfuscated and matches no IOC string, so it is only visible
   # via the hidden-payload heuristic — a run of whitespace followed by code.
   while IFS= read -r f; do
@@ -501,7 +514,7 @@ $hooks
     fi
     echo "$body" | grep -qE "$pattern" && hits="${hits}    $f matches IOC @$REF
 "
-  done < <(echo "$tree" | grep -E '(^|/)(postcss|next|tailwind|vite|svelte|nuxt|astro|rollup|webpack|babel)\.config\.[cm]?[jt]s$' \
+  done < <(echo "$tree" | grep -E '(^|/)(postcss|next|tailwind|vite|svelte|nuxt|astro|rollup|webpack|babel|eslint)\.config\.[cm]?[jt]s$' \
            | grep -v node_modules | head -8)
 
   printf '%s' "$hits"

@@ -49,7 +49,7 @@
     characters wide.</p>
     <div class="panel"><div class="panel-bar"><span class="label">hidden-payload heuristic</span><div class="bar-actions"></div></div>
       <div class="scroller"><pre>awk 'length > 1500 {print FILENAME": line "FNR" ("length" chars)"}' \
-  $(find . -name "*.js" -not -path "*/node_modules/*")</pre></div></div>
+  $(find . \( -name "*.js" -o -name "*.mjs" -o -name "*.cjs" \) -not -path "*/node_modules/*")</pre></div></div>
   </div>
 </section>
 

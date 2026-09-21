@@ -53,10 +53,14 @@ cmd_selftest(){
     [ -z "$ioc" ] && ioc='0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a'
     printf 'const c2 = "%s";\n' "$ioc" > bad_ioc.js
 
-    # 2. build config with the payload hidden past a whitespace run.
-    #    Deliberately SHORT (~700 chars) — the old `length > 1500` heuristic
+    # 2. build config with code hidden past a whitespace run, carrying NO IOC
+    #    string anywhere — this must be caught by the structural test alone.
+    #    (The earlier sample also carried `global.i=` and `/0x/ls`, so it passed
+    #    through the working-tree IOC grep and never exercised the structural
+    #    detector — which is how that detector sat broken, see below.)
+    #    Deliberately SHORT (~640 chars) — the old `length > 1500` heuristic
     #    missed exactly this, so the test must be shorter than that threshold.
-    printf 'export default config;%*sglobal.i="A8-0000-0";var u=new URL("http://1.2.3.4:443/0x/ls");\n' \
+    printf 'export default config;%*svar q=(function(){return process.env;})();\n' \
       600 '' > postcss.config.mjs
 
     # 3. fake font: JavaScript wearing a .woff2 extension
