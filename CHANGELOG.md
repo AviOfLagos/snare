@@ -7,6 +7,44 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.3.3] — 2026-10-02
+
+### Fixed — the guard cost about a third of a core to do nothing
+
+Measured on an idle machine, `--interval 1` spent roughly 35% of one CPU. The
+honest figures, per call, wall clock, children included:
+
+| | before | after |
+|---|---|---|
+| `guard_scan_procs` | ~175 ms | **49 ms** |
+| `guard_scan_net`   | ~1751 ms | **159 ms** |
+
+Three causes, all of them shell loops doing work that belongs in C:
+
+- **The network scan walked every open socket in bash**, testing each C2 IP
+  with `case`. That is 1.75s a call. A single `grep -F -f` pass does the same
+  filtering in C and normally matches nothing, so the loop body — and its
+  per-connection `snare_net_pid` / `snare_ps_cmd` forks — is never entered.
+- **The process scan read every process on the machine.** Only interpreters
+  can execute an inline payload, which the `case` already enforced exactly, so
+  a `grep -E` pre-filter now drops the other few hundred before bash sees one.
+- **The C2 IP list was re-resolved inside the per-connection loop**, costing a
+  fork for every open socket on each scan.
+
+### Changed — the two checks now tick at different rates
+
+A loader has to die within ~1s, but a socket to a C2 does not appear and
+vanish inside a second. The process check runs every tick; the network check
+runs every 10th. Both still run together for the one-shot `snare guard scan`.
+
+### Also
+
+- `91.218.183.174` added to the kill pattern, not just the scan IOCs. The
+  guard's cmdline pattern is separate from `iocs.txt` and had been missed.
+- Verified end to end rather than by inspection: the live daemon detected and
+  SIGKILLed `node -e "global['_t_u']=..."` within 3 seconds, with evidence
+  written, after each change.
+
 ## [1.3.2] — 2026-10-02
 
 ### Fixed — false positives, measured on real repos

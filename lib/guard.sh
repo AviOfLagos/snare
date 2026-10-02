@@ -7,7 +7,7 @@ guard_pattern(){
   # stage seen in the wild is an ordinary-looking `node <script>.js` whose
   # command line carries no loader string at all — it was held by a crontab
   # @reboot line and would have run for as long as the machine did.
-  echo '23\.27\.13\.135|193\.247\.144\.38|194\.11\.226\.41|/0x/cl[bs]|/0x/ls|/verify-human/|q4FZkxX|A8-3379-6|A8-4893-2|/\*RS260605\*/|/\*M260630A\*/|global\[._t_s.\]|global\[._V.\]|0xa322[eE]5f3[dD]311[dD]3080e6f0121063e9a[dD][cC]2490[eE]f1a|node[[:space:]]+.*-e[[:space:]]+.*global\[|osascript.*(generalPasteboard|NSPasteboard)|setup_bun\.js|bun_environment\.js|[[:space:]]--token[[:space:]]+.?http://[0-9.]+:[0-9]+\|'
+  echo '23\.27\.13\.135|193\.247\.144\.38|194\.11\.226\.41|91\.218\.183\.174|/0x/cl[bs]|/0x/ls|/verify-human/|q4FZkxX|A8-3379-6|A8-4893-2|/\*RS260605\*/|/\*M260630A\*/|global\[._t_s.\]|global\[._V.\]|0xa322[eE]5f3[dD]311[dD]3080e6f0121063e9a[dD][cC]2490[eE]f1a|node[[:space:]]+.*-e[[:space:]]+.*global\[|osascript.*(generalPasteboard|NSPasteboard)|setup_bun\.js|bun_environment\.js|[[:space:]]--token[[:space:]]+.?http://[0-9.]+:[0-9]+\|'
 }
 
 # ---------------------------------------------------------------- provenance
@@ -157,9 +157,24 @@ guard_handle(){ # $1=pid $2=reason $3=cmd
   fi
 }
 
-guard_scan_once(){
-  local found=0 pid ppid cmd exe base line pat
-  pat="$(guard_pattern)"
+# The cmdline pattern is a constant, but building it per tick cost ~5ms for
+# nothing, so it is memoised for the life of the process.
+# Assigns GUARD_PAT in the CURRENT shell. An earlier version of this returned
+# the value through a command substitution, which runs in a subshell, so the
+# memo never reached the caller: the pattern was rebuilt on every tick and
+# paid for a fork as well.
+GUARD_PAT=""
+_guard_pat_init(){ [ -n "$GUARD_PAT" ] || GUARD_PAT="$(guard_pattern)"; }
+
+# The process check and the network check are separate because they want
+# different cadences. A loader has to die within ~1s, but a socket to a C2
+# does not appear and vanish inside one second. Measured on this machine:
+# snare_netlist ~96ms a call against snare_ps ~43ms, so running both every
+# second spent about half a core doing nothing on an idle box. The run loop
+# now ticks the process check every second and the network check every 10th.
+guard_scan_procs(){
+  local found=0 pid ppid cmd exe base pat
+  _guard_pat_init; pat="$GUARD_PAT"
   # Matched inside bash: the pattern is never placed in a child's argv.
   while read -r pid ppid cmd; do
     [ -z "$pid" ] || [ -z "$cmd" ] && continue
@@ -182,13 +197,29 @@ guard_scan_once(){
       *) continue ;;
     esac
     if [[ "$cmd" =~ $pat ]]; then guard_handle "$pid" "cmdline-ioc" "$cmd"; found=1; fi
-  done < <(snare_ps)
+    # Only interpreters are candidates (the case below enforces it exactly),
+    # so grep drops the other few hundred processes before bash sees them.
+  done < <(snare_ps | grep -E '(^|[ /])(node|nodejs|bun|deno|osascript|python|python3|ruby|perl|php)([ /]|$)' 2>/dev/null)
 
-  # Any process holding a socket to a known C2, whatever it is named.
-  local ip
+  return $found
+}
+
+# Any process holding a socket to a known C2, whatever it is named. The IP
+# list follows the dead drop — see lib/c2.sh.
+guard_scan_net(){
+  local found=0 pid cmd line ip ips
+  # Resolved once per scan, not once per connection: the old form re-ran the
+  # whole lookup inside the loop, which on a busy machine meant a fork for
+  # every open socket.
+  ips="${SNARE_C2_IPS:-$(snare_c2_ips)}"
+  # Pre-filter in grep, not bash. Walking every open socket in a shell loop
+  # and testing each IP with `case` measured 1751ms a call on this machine,
+  # which dominated the guard's whole CPU budget at any useful interval. grep
+  # does the same pass in C and normally yields nothing, so the loop below
+  # runs zero times and the per-line fork path is never entered.
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    for ip in ${SNARE_C2_IPS:-$(snare_c2_ips)}; do
+    for ip in $ips; do
       case "$line" in *"$ip"*)
         pid="$(printf '%s' "$line" | snare_net_pid)"; [ -z "$pid" ] && continue
         [ "$pid" = "$$" ] && continue
@@ -197,8 +228,16 @@ guard_scan_once(){
         guard_handle "$pid" "c2-connection:$ip" "$cmd"; found=1 ;;
       esac
     done
-  done < <(snare_netlist)
+  done < <(snare_netlist | grep -F -f <(printf '%s\n' $ips) 2>/dev/null)
   return $found
+}
+
+# Both checks, for the one-shot `snare guard scan` and the selftest.
+guard_scan_once(){
+  local rc=0
+  guard_scan_procs || rc=1
+  guard_scan_net   || rc=1
+  return $rc
 }
 
 # Is the background guard actually running, and does it exist at all?
@@ -243,12 +282,16 @@ cmd_guard(){
       # here and re-resolve about hourly rather than on every tick.
       snare_c2_maybe_refresh
       SNARE_C2_IPS="$(snare_c2_ips)"
-      local ticks=0
+      # Cadences, in ticks. The process check runs every tick because that is
+      # what has to beat the loader; the network check is ~96ms a call and a
+      # C2 socket lives far longer than a second, so it runs every 10th.
+      local ticks=0 net_every=10 c2_every=3600
+      guard_scan_net || true
       while true; do
-        guard_scan_once || true
+        guard_scan_procs || true
         ticks=$(( ticks + 1 ))
-        if [ "$ticks" -ge 3600 ]; then
-          ticks=0
+        [ $(( ticks % net_every )) -eq 0 ] && { guard_scan_net || true; }
+        if [ $(( ticks % c2_every )) -eq 0 ]; then
           snare_c2_maybe_refresh
           SNARE_C2_IPS="$(snare_c2_ips)"
         fi
