@@ -47,7 +47,7 @@ jobs:
           help_out="$(./bin/snare help 2>&1)"
           missing=0
           for c in guard scan fix notify doctor update selftest report schedule \
-                   baseline hook shield ci rotate version help; do
+                   baseline hook shield ci rotate version help c2; do
             echo "$help_out" | grep -q "snare $c" || { echo "::error::'$c' is dispatched but absent from snare help"; missing=1; }
           done
           [ "$missing" = 0 ] && echo "help covers every top-level command"
