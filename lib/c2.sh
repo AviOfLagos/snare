@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # ---------------------------------------------------------------- dead-drop C2
 # The 2026-10 loader does not hardcode its C2. It reads the latest transaction
 # from a fixed Ethereum sender and takes the first 8 bytes of that
