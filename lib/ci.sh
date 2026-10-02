@@ -87,7 +87,7 @@ _ci_status(){
   [ -z "$br" ] && return 0
   local checks; checks="$(gh api "repos/$slug/branches/$br/protection/required_status_checks" \
     --jq '.contexts[]?' 2>/dev/null)"
-  if echo "$checks" | grep -qi snare; then
+  if echo "$checks" | _qmatch -i snare; then
     grn "  branch protection: snare check is REQUIRED on $br"
   else
     ylw "  branch protection: snare is NOT a required check on $br"

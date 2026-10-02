@@ -69,7 +69,7 @@ cmd_baseline(){
 snare_baseline_filter(){
   local dir="$1" out="$2"
   local f; f="$(_bl_file "$dir")"
-  [ -s "$f" ] || { echo "$out"; echo "$out" | grep -q '\[!\]' && return 1 || return 0; }
+  [ -s "$f" ] || { echo "$out"; echo "$out" | _qmatch '\[!\]' && return 1 || return 0; }
 
   local new=0 line fp
   while IFS= read -r line; do

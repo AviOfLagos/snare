@@ -468,7 +468,7 @@ cmd_fix(){
   local found=0 ref br
   for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
     br="${ref#origin/}"
-    git show "$ref:.vscode/tasks.json" 2>/dev/null | grep -q folderOpen \
+    git show "$ref:.vscode/tasks.json" 2>/dev/null | _qmatch folderOpen \
       && { red "  [$br] .vscode/tasks.json runOn:folderOpen"; found=1; }
     local m; m="$(git grep -InE "$pattern" "$ref" -- 2>/dev/null | head -3)"
     [ -n "$m" ] && { red "  [$br] IOC content:"; echo "$m" | cut -c1-140 | sed 's/^/      /'; found=1; }

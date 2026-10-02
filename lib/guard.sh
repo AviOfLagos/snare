@@ -209,7 +209,7 @@ guard_scan_once(){
 guard_state(){
   case "$SNARE_OS" in
     macos)
-      launchctl list 2>/dev/null | grep -q com.snare.guard && { echo running; return; }
+      launchctl list 2>/dev/null | _qmatch com.snare.guard && { echo running; return; }
       [ -f "$HOME/Library/LaunchAgents/com.snare.guard.plist" ] && { echo stopped; return; } ;;
     linux|wsl)
       systemctl --user is-active --quiet snare-guard.service 2>/dev/null && { echo running; return; }
@@ -320,12 +320,12 @@ PLIST
       plutil -lint "$plist" >/dev/null || die "generated plist is invalid"
       launchctl unload "$plist" 2>/dev/null; launchctl load "$plist" 2>&1
       sleep 1
-      launchctl list | grep -q com.snare.guard && grn "guard installed and running" || red "guard failed to start" ;;
+      launchctl list | _qmatch com.snare.guard && grn "guard installed and running" || red "guard failed to start" ;;
     uninstall) launchctl unload "$plist" 2>/dev/null; rm -f "$plist"; ylw "guard uninstalled" ;;
     start)     launchctl load   "$plist" 2>&1 && grn "started" ;;
     stop)      launchctl unload "$plist" 2>&1 && ylw "stopped" ;;
     status)
-      if launchctl list 2>/dev/null | grep -q com.snare.guard; then
+      if launchctl list 2>/dev/null | _qmatch com.snare.guard; then
         grn "guard running (pid $(launchctl list | awk '/com.snare.guard/{print $1}'))"
       else ylw "guard not running — 'snare guard install' to enable at login"; fi
       _guard_common_status ;;

@@ -265,7 +265,7 @@ cmd_update(){
   # refreshing instead of leaving people to assume it was handled.
   local stale=0
 
-  if launchctl list 2>/dev/null | grep -q com.snare.guard \
+  if launchctl list 2>/dev/null | _qmatch com.snare.guard \
      || systemctl --user is-active snare-guard >/dev/null 2>&1; then
     echo; ylw "  the background guard is still running the previous version"
     dim "    snare guard stop && snare guard start"

@@ -82,7 +82,7 @@ LIST
       body="$(gh api "repos/$r/contents/.github/workflows/$w" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)"
       [ -z "$body" ] && continue
       # Whole-secret-context dumps, or secrets leaving the runner.
-      if echo "$body" | grep -qE 'toJSON\([[:space:]]*secrets|webhook\.site|\$\{\{[[:space:]]*secrets\.[A-Za-z_]+[[:space:]]*\}\}[^\n]*(curl|wget|nc )'; then
+      if echo "$body" | _qmatch -E 'toJSON\([[:space:]]*secrets|webhook\.site|\$\{\{[[:space:]]*secrets\.[A-Za-z_]+[[:space:]]*\}\}[^\n]*(curl|wget|nc )'; then
         red "      [!] $r/.github/workflows/$w — exports secrets off the runner"
         found=1
       fi

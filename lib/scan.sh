@@ -52,8 +52,8 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     if v: print(("HIGH" if BAD.search(str(v)) else "INFO"), "%s: %s"%(k,v))
 ' "$pj" 2>/dev/null)"
       [ -z "$h" ] && continue
-      echo "$h" | grep -q '^HIGH' && { _hit "$pj suspicious install hook:"; echo "$h" | grep '^HIGH' | sed 's/^HIGH/      /'; }
-      echo "$h" | grep -q '^INFO' && dim "      $pj: $(echo "$h" | grep '^INFO' | sed 's/^INFO //' | tr '\n' ';')"
+      echo "$h" | _qmatch '^HIGH' && { _hit "$pj suspicious install hook:"; echo "$h" | grep '^HIGH' | sed 's/^HIGH/      /'; }
+      echo "$h" | _qmatch '^INFO' && dim "      $pj: $(echo "$h" | grep '^INFO' | sed 's/^INFO //' | tr '\n' ';')"
     done < <(find . -name package.json -not -path "*/node_modules/*" 2>/dev/null | head -40)
 
     while IFS= read -r t; do
@@ -488,12 +488,12 @@ _scan_ref(){ # $1=repo $2=ref $3=pattern -> prints findings
   tree="$(gh api "repos/$R/git/trees/$REF?recursive=1" --jq '.tree[].path' 2>/dev/null)"
   [ -z "$tree" ] && return 0
 
-  echo "$tree" | grep -qE '(^|/)(setup_bun\.js|bun_environment\.js|shai-hulud[^/]*)$' \
+  echo "$tree" | _qmatch -E '(^|/)(setup_bun\.js|bun_environment\.js|shai-hulud[^/]*)$' \
     && hits="${hits}    worm artifact filename @$REF
 "
-  if echo "$tree" | grep -q '^\.vscode/tasks\.json$'; then
+  if echo "$tree" | _qmatch '^\.vscode/tasks\.json$'; then
     body="$(gh api "repos/$R/contents/.vscode/tasks.json?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)"
-    echo "$body" | grep -q folderOpen && hits="${hits}    .vscode/tasks.json runOn:folderOpen @$REF
+    echo "$body" | _qmatch folderOpen && hits="${hits}    .vscode/tasks.json runOn:folderOpen @$REF
 "
   fi
   # fake font: fetch only small font files and check magic bytes
@@ -521,7 +521,7 @@ for k in ("preinstall","install","postinstall","prepare"):
     [ -n "$hooks" ] && hits="${hits}    $f suspicious install hook @$REF:
 $hooks
 "
-    echo "$body" | grep -qE "$pattern" && hits="${hits}    $f matches IOC @$REF
+    echo "$body" | _qmatch -E "$pattern" && hits="${hits}    $f matches IOC @$REF
 "
   done < <(echo "$tree" | grep -E '(^|/)package\.json$' | grep -v node_modules | head -3)
   # Auto-loaded configs: the documented execution routes. next dev / next build
@@ -535,11 +535,11 @@ $hooks
     [ -z "$f" ] && continue
     body="$(gh api "repos/$R/contents/$f?ref=$REF" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)"
     [ -z "$body" ] && continue
-    if echo "$body" | grep -qE '[^[:space:]][[:space:]]{50,}[^[:space:]]'; then
+    if echo "$body" | _qmatch -E '[^[:space:]][[:space:]]{50,}[^[:space:]]'; then
       hits="${hits}    $f hides code past a run of whitespace @$REF
 "
     fi
-    echo "$body" | grep -qE "$pattern" && hits="${hits}    $f matches IOC @$REF
+    echo "$body" | _qmatch -E "$pattern" && hits="${hits}    $f matches IOC @$REF
 "
   done < <(echo "$tree" | grep -E '(^|/)(postcss|next|tailwind|vite|svelte|nuxt|astro|rollup|webpack|babel|eslint)\.config\.[cm]?[jt]s$' \
            | grep -v node_modules | head -8)

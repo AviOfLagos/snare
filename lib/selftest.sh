@@ -34,10 +34,30 @@ _st_deaddrop(){
   fi
 
   # The live C2 must be in the guard's kill list even with no cache present.
-  if SNARE_C2_CACHE=/nonexistent snare_c2_ips | grep -q '91\.218\.183\.174'; then
+  if SNARE_C2_CACHE=/nonexistent snare_c2_ips | _qmatch '91\.218\.183\.174'; then
     _st_ok  "the known C2 is in the kill list without a cache"
   else
     _st_bad "the known C2 is in the kill list without a cache"
+  fi
+
+  # Regression guard for the pipefail/SIGPIPE false clean. grep -q exits on the
+  # first match and kills the producer; under `set -o pipefail` the pipeline
+  # then returns 141 and the caller concludes "no match". It only bites when
+  # the producer outruns the pipe buffer, which is why small fixtures missed
+  # it and `scan github` reported a 20k-file infected repo as clean.
+  local big i
+  big=".vscode/tasks.json"
+  for i in $(seq 1 4000); do big="$big
+src/generated/module-$i/index.ts"; done
+  if printf '%s\n' "$big" | _qmatch '^\.vscode/tasks\.json$'; then
+    _st_ok  "an early match is still found when the producer outruns the pipe"
+  else
+    _st_bad "an early match is still found when the producer outruns the pipe"
+  fi
+  if printf '%s\n' "$big" | _qmatch '^\.vscode/launch\.json$'; then
+    _st_bad "a pattern that is absent is not reported as present"
+  else
+    _st_ok  "a pattern that is absent is not reported as present"
   fi
 
   local A; A="$(mktemp -d "${TMPDIR:-/tmp}/snaredrop.XXXXXX")" || {
@@ -72,7 +92,7 @@ PYX
 _st_expect(){
   local label="$1" expect="$2" pat="$3" out="$4"
   local findings; findings="$(echo "$out" | grep '\[!\]')"
-  if echo "$findings" | grep -qE "$pat"; then
+  if echo "$findings" | _qmatch -E "$pat"; then
     [ "$expect" = hit ] && _st_ok "$label" || _st_bad "$label (reported as a finding, should be clean)"
   else
     [ "$expect" = clean ] && _st_ok "$label" || _st_bad "$label (NOT flagged — false clean)"
@@ -160,12 +180,12 @@ JSON
   printf '#!/bin/sh\nexit 127\n' > "$_pd/xxd";    chmod +x "$_pd/xxd"
   printf '#!/bin/sh\nexit 127\n' > "$_pd/shasum"; chmod +x "$_pd/shasum"
   local out2; out2="$(PATH="$_pd:$PATH" cmd_scan_repo "$T" 2>&1)"
-  if echo "$out2" | grep '\[!\]' | grep -q 'real_font'; then
+  if echo "$out2" | grep '\[!\]' | _qmatch 'real_font'; then
     _st_bad "genuine fonts still pass without xxd/shasum"
   else
     _st_ok "genuine fonts still pass without xxd/shasum"
   fi
-  if echo "$out2" | grep '\[!\]' | grep -q 'public_fake'; then
+  if echo "$out2" | grep '\[!\]' | _qmatch 'public_fake'; then
     _st_ok "fake font still caught without xxd/shasum"
   else
     _st_bad "fake font still caught without xxd/shasum"
@@ -295,14 +315,14 @@ PY
 
   local out
   out="$(PATH="$D/bad/bin:$PATH" _doctor_node 2>&1)"
-  if printf '%s' "$out" | grep -q "$D/bad/.*cli\.js"; then
+  if printf '%s' "$out" | _qmatch "$D/bad/.*cli\.js"; then
     _st_ok  "a patched npm cli.js is flagged"
   else
     _st_bad "a patched npm cli.js is flagged (NOT detected — false clean)"
   fi
 
   out="$(PATH="$D/good/bin:$PATH" _doctor_node 2>&1)"
-  if printf '%s' "$out" | grep -q "$D/good/.*cli\.js"; then
+  if printf '%s' "$out" | _qmatch "$D/good/.*cli\.js"; then
     _st_bad "an intact npm cli.js is left alone (reported, should be clean)"
   else
     _st_ok  "an intact npm cli.js is left alone"

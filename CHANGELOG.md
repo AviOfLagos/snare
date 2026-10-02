@@ -7,6 +7,32 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.3.1] — 2026-10-02
+
+### Fixed — `scan github` reported clean on an infected repo
+
+- **`producer | grep -q X` could report NO MATCH when X was present.**
+  `grep -q` exits on the first match, which SIGPIPEs whatever is still
+  writing. `bin/snare` runs under `set -o pipefail`, so that 141 became the
+  pipeline's status and every caller read it as "not found". The failure is
+  size-dependent, which is why it survived: it only bites once the producer
+  has more to write than the pipe buffer holds, so small fixtures always
+  passed.
+
+  Measured: a repo tree of 20k paths with `.vscode/tasks.json` as the first
+  entry was reported **clean** by `scan github`. The same bug sat in front of
+  the worm-artifact filename check, the per-file IOC match, the hidden-payload
+  check in `_scan_ref`, and `fix.sh`'s history scan for `folderOpen`.
+
+  It also made `snare schedule status` report "not installed" for an
+  installed timer, while `snare guard status` worked — purely because
+  `com.snare.guard` happens to sort last in `launchctl list`, so the producer
+  had already finished writing by the time grep matched.
+
+  All 24 piped `grep -q` uses now go through `_qmatch`, which reads to EOF.
+  A `grep -q` with a file argument has no producer to kill and is untouched.
+  Two selftest checks cover it, and both fail against the old form.
+
 ## [1.3.0] — 2026-10-02
 
 ### Fixed — scanner reported clean on an infected repo

@@ -194,7 +194,7 @@ _sched_uninstall(){
 _sched_status(){
   case "$SNARE_OS" in
     macos)
-      launchctl list 2>/dev/null | grep -q "$_sched_label" \
+      launchctl list 2>/dev/null | _qmatch "$_sched_label" \
         && grn "  scheduled report: installed" || ylw "  scheduled report: not installed" ;;
     linux|wsl)
       systemctl --user is-enabled snare-report.timer >/dev/null 2>&1 \

@@ -78,6 +78,17 @@ require_gh(){
   gh auth setup-git >/dev/null 2>&1 || true   # no prompts on private clones
 }
 
+# `grep -q` exits on the first match, which sends SIGPIPE to whatever is still
+# writing into the pipe. bin/snare runs under `set -o pipefail`, so that 141
+# becomes the pipeline's status and `producer | grep -q X` reports NO MATCH
+# even though X was there. It is silent and size-dependent: it only bites once
+# the producer has more to write than the pipe buffer holds, so it passed every
+# small fixture and failed on real repos.
+#
+# Measured: a file tree of 20k paths with .vscode/tasks.json first was reported
+# clean by `scan github`. Reading to EOF costs nothing here and cannot misfire.
+_qmatch(){ grep "$@" >/dev/null; }
+
 # Python 3 under whatever name this platform gives it: Debian/Ubuntu and macOS
 # expose python3, Git Bash on Windows often only has the py launcher.
 snare_py(){
