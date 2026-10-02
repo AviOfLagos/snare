@@ -7,6 +7,44 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.3.4] — 2026-10-02
+
+### Fixed — `scan repo` did not finish on a real project
+
+Scanning a working tree means scanning `node_modules`, because that is where
+npm-delivered malware lands. On macOS that was not viable: one `grep -rInE`
+pass with the combined ~50-branch IOC pattern ran for **over 22 minutes
+without finishing** on a Next.js checkout (53,740 files / 976MB in
+`node_modules`). It had only ever looked fast because `| head -40` killed
+grep early once false positives filled the buffer — fixing those in 1.3.2
+exposed the real cost.
+
+Two changes, both measured:
+
+- **The IOC set is split by whether it needs a regex engine at all.** 42 of
+  the 53 patterns are plain strings once backslash-escapes are removed —
+  `global\['_t_s'\]` and `setup_bun\.js` look like regexes but are literals —
+  and those go through `-F`, which is Aho-Corasick and indifferent to how
+  many patterns there are. Only 11 genuinely need `-E`.
+- **ripgrep is used when it is installed**, falling back to grep when it is
+  not. Measured on the same tree, a literal pass over `node_modules`: BSD
+  grep >120s, ripgrep 1.6s.
+
+Section 1 on that checkout: **>22 min (never completed) → 45s.**
+
+ripgrep means the Rust regex engine rather than POSIX ERE, so detection could
+otherwise change with whatever is installed. Both engines were diffed on the
+real samples — the plaintext loader, the `.llf` dropper branch and a clean
+repo — and returned byte-identical findings (0, 1 and 21 hits respectively).
+A selftest now asserts that agreement, so it cannot drift silently.
+
+### Known, not fixed
+
+`scan repo` is still slow on very large trees: sections 2, 3 and 4 each run
+their own `find` over the whole checkout, which is 644,559 files on the tree
+above. Section 1 was the measured bottleneck and is the only part changed
+here. The remaining work is to walk the tree once and share the result.
+
 ## [1.3.3] — 2026-10-02
 
 ### Fixed — the guard cost about a third of a core to do nothing

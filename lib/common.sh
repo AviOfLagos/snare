@@ -33,6 +33,68 @@ ioc_pattern(){
 }
 ioc_list(){ grep -v '^[[:space:]]*#' "$IOCS" | grep -v '^[[:space:]]*$'; }
 
+# Section 1 greps the whole working tree, node_modules included, because that
+# is where npm-delivered malware lands. Doing that with one ~50-branch ERE was
+# pathological: the `.*` branches backtrack across minified bundles, and a
+# real Next.js checkout took over 22 minutes without finishing. (It used to
+# appear fast only because `| head -40` killed grep early once false positives
+# filled the buffer — fixing those made the real cost visible.)
+#
+# Most IOCs are plain strings. grep -F matches those with Aho-Corasick, in one
+# pass, regardless of how many there are. Only the genuinely regex ones need
+# -E. A line whose sole metacharacter is an escaped dot is a literal once the
+# backslash is dropped.
+# A pattern is a literal if every metacharacter in it is backslash-escaped:
+# `global\['_t_s'\]` and `setup_bun\.js` are plain strings once unescaped,
+# even though they look like regexes. Only patterns with a LIVE metacharacter
+# -- `.*`, `?`, `|`, a character class -- actually need the -E engine, and
+# those are the ones that backtrack across minified bundles.
+_ioc_split(){
+  ioc_list | snare_py -c '
+import re, sys
+META = set("[](){}*+?|^$.")
+want_literals = sys.argv[1] == "lit"
+for line in sys.stdin.read().splitlines():
+    if not line:
+        continue
+    bare = re.sub(r"\\.", "", line)          # drop escaped pairs
+    is_literal = not any(c in META for c in bare)
+    if is_literal == want_literals:
+        print(re.sub(r"\\(.)", r"\1", line) if is_literal else line)
+' "$1"
+}
+ioc_literals(){ _ioc_split lit; }
+ioc_regexes(){  _ioc_split re | paste -sd"|" -; }
+
+# Scanning a working tree means scanning node_modules, because that is where
+# npm-delivered malware lands. On macOS, BSD grep -rIn across a real
+# node_modules (53,740 files / 976MB, measured on one Next.js checkout) takes
+# over two minutes for a single pass. ripgrep does the same pass in 1.6s, so
+# snare uses it when it is present and falls back to grep when it is not.
+#
+# The literal pass is engine-independent by definition. The regex pass is not:
+# ripgrep uses the Rust engine rather than POSIX ERE. The 11 regex IOCs use
+# only POSIX classes, `.*`, `?`, `|` and simple classes, all of which both
+# engines read the same way, and the selftest asserts detection against the
+# real samples under whichever engine is in use.
+snare_has_rg(){ command -v rg >/dev/null 2>&1; }
+
+# $1 = mode (lit|re), $2 = literals file or regex, rest = extra args
+snare_grep_tree(){
+  local mode="$1" pat="$2"; shift 2
+  if snare_has_rg; then
+    case "$mode" in
+      lit) rg -n --no-ignore --hidden -g '!.git' -F -f "$pat" "$@" . 2>/dev/null ;;
+      re)  rg -n --no-ignore --hidden -g '!.git' -e "$pat"    "$@" . 2>/dev/null ;;
+    esac
+    return 0
+  fi
+  case "$mode" in
+    lit) grep -rInF -f "$pat" . --exclude-dir=.git "$@" 2>/dev/null ;;
+    re)  grep -rInE "$pat"    . --exclude-dir=.git "$@" 2>/dev/null ;;
+  esac
+}
+
 need(){ command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installed"; }
 
 # Auth is ALWAYS the caller's own — snare never ships or stores a token.

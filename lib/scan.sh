@@ -30,11 +30,27 @@ cmd_scan_repo(){
       EXCL=(--exclude-dir=lib --exclude-dir=bin --exclude-dir=docs --exclude-dir=promo
             --exclude-dir=.github --exclude-dir=.claude-plugin --exclude-dir=skills
             --exclude=iocs.txt --exclude=README.md --exclude=CHANGELOG.md)
+      # Same exclusions in ripgrep's glob form, for snare_grep_tree.
+      EXCL_RG=(-g '!lib' -g '!bin' -g '!docs' -g '!promo' -g '!.github'
+               -g '!.claude-plugin' -g '!skills'
+               -g '!iocs.txt' -g '!README.md' -g '!CHANGELOG.md')
       dim "  (snare's own source tree — its detection patterns are excluded)"
     fi
 
     hdr "1. Working tree"
-    out="$(grep -rInE "$pattern" . --exclude-dir=.git ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null | head -40)"
+    # Two passes instead of one combined ERE: the 35 literal IOCs go through
+    # grep -F (Aho-Corasick — one pass, cheap even across node_modules) and
+    # only the 18 genuinely regex ones through -E. See ioc_literals().
+    local _lit _re _of="" _oe=""
+    _lit="$(mktemp "${TMPDIR:-/tmp}/snareioc.XXXXXX")" || _lit=""
+    [ -n "$_lit" ] && ioc_literals > "$_lit"
+    _re="$(ioc_regexes)"
+    local _ex=(); if snare_has_rg; then _ex=(${EXCL_RG[@]+"${EXCL_RG[@]}"}); else _ex=(${EXCL[@]+"${EXCL[@]}"}); fi
+    [ -s "$_lit" ] && _of="$(snare_grep_tree lit "$_lit" ${_ex[@]+"${_ex[@]}"} | head -40)"
+    # Guard: an empty regex matches every line in the tree.
+    [ -n "$_re" ] && _oe="$(snare_grep_tree re  "$_re"  ${_ex[@]+"${_ex[@]}"} | head -40)"
+    [ -n "$_lit" ] && rm -f "$_lit"
+    out="$(printf '%s\n%s\n' "$_of" "$_oe" | grep -v '^[[:space:]]*$' | sort -u | head -40)"
     if [ -n "$out" ]; then while IFS= read -r l; do _hit "$(echo "$l" | cut -c1-160)"; done <<< "$out"
     else grn "  clean"; fi
 

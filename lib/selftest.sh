@@ -60,6 +60,29 @@ src/generated/module-$i/index.ts"; done
     _st_ok  "a pattern that is absent is not reported as present"
   fi
 
+  # snare picks ripgrep over grep when it is present, because BSD grep across
+  # a real node_modules takes minutes. That swaps POSIX ERE for the Rust
+  # engine, so the two must agree on the regex IOCs or detection silently
+  # changes with whatever happens to be installed.
+  if snare_has_rg; then
+    local _eq; _eq="$(mktemp -d "${TMPDIR:-/tmp}/snareeng.XXXXXX")"
+    printf '%s\n' "global.i = 'A8-new';" \
+                  "node -e global['_t_s']=1" \
+                  'const x = "./fonts/a.woff2" || y;' \
+                  '  "label": "eslint-check",' \
+                  "var pb = NSPasteboard.generalPasteboard; pb.changeCount" > "$_eq/f.js"
+    local _re _ra _rb
+    _re="$(ioc_regexes)"
+    _ra="$(cd "$_eq" && rg -n --no-ignore --hidden -e "$_re" . 2>/dev/null | sort)"
+    _rb="$(cd "$_eq" && grep -rInE "$_re" . 2>/dev/null | sort)"
+    if [ "$_ra" = "$_rb" ] && [ -n "$_ra" ]; then
+      _st_ok  "ripgrep and grep agree on the regex IOCs"
+    else
+      _st_bad "ripgrep and grep agree on the regex IOCs (rg=$(printf '%s' "$_ra" | grep -c .) grep=$(printf '%s' "$_rb" | grep -c .))"
+    fi
+    rm -rf "$_eq"
+  fi
+
   local A; A="$(mktemp -d "${TMPDIR:-/tmp}/snaredrop.XXXXXX")" || {
     _st_bad "cannot create a temp directory"; return 1; }
   A="$(cd "$A" && pwd)"
