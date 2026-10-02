@@ -119,6 +119,12 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     local stray=0
     while IFS= read -r f; do
       [ -z "$f" ] && continue
+      # An empty file cannot hold a payload, and the task has to execute
+      # something. This also clears the usual placeholders.
+      [ -s "$f" ] || continue
+      case "$(basename "$f")" in
+        .gitkeep|.keep|.gitignore|.gitattributes|.DS_Store|README|LICENSE|LICENCE) continue ;;
+      esac
       case "${f##*.}" in
         woff2|woff|ttf|otf|eot|svg|png|jpg|jpeg|gif|webp|avif|ico|mp4|webm|mp3|wav|pdf) continue ;;
         css|scss|less|map|json|md|txt|html|htm|xml|wasm|webmanifest) continue ;;
@@ -151,8 +157,15 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
     # expressions, so the awk form matched nothing and the primary test was a
     # no-op on those hosts. grep -E is the engine _scan_ref, fix and hook
     # already use for this exact pattern.
+    # Generated framework output is excluded: a bundler legitimately emits long
+    # whitespace runs, so .next/ alone produced three findings per build in a
+    # clean repo. dist/ and build/ are deliberately NOT excluded — those are
+    # sometimes committed, and are a real place to hide a payload.
     files="$(find . \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' \) \
-        -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -400 \
+        -not -path "*/node_modules/*" -not -path "*/.git/*" \
+        -not -path "*/.next/*"  -not -path "*/.nuxt/*"    -not -path "*/.turbo/*" \
+        -not -path "*/.svelte-kit/*" -not -path "*/.output/*" -not -path "*/.vercel/*" \
+        -not -path "*/.cache/*" -not -path "*/coverage/*" 2>/dev/null | head -400 \
         | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/\|/promo/' || cat; } )"
     hid="$(printf '%s\n' "$files" | xargs grep -lE '[^[:space:]][[:space:]]{50,}[^[:space:]]' 2>/dev/null | head -20)"
     lng="$(printf '%s\n' "$files" | xargs awk 'length > 1500 {print "LONG "FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -20)"

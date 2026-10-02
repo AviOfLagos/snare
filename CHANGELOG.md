@@ -7,6 +7,41 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.3.2] — 2026-10-02
+
+### Fixed — false positives, measured on real repos
+
+A scanner nobody believes is a scanner nobody runs. Three IOCs were generic
+enough to fire on ordinary code, and the whitespace heuristic read generated
+bundles. One repo produced 43 findings and every single one was wrong.
+
+- **`_H2`, `_t_s`, `_t_u` were matched bare.** `bwip-js` names generated
+  variables `_H0`..`_H4` and `@edge-runtime/primitives` contains
+  `PAUSED_H2_UPGRADE`, so any project with those dependencies lit up. The
+  loader always sets these as globals, so they are now anchored
+  (`global['_H2']`, `_global._H2`, …). Checked against the plaintext sample:
+  the anchored forms hit it exactly as the bare token did, so no detection
+  was traded away.
+- **`changeCount` was matched bare.** `NSPasteboard.changeCount` is the real
+  clipboard-stealer signal, but the bare word matched vitest's diff printer
+  (`changeCounts.a`) and fired on anything with a test runner. Now anchored
+  to the pasteboard API. `generalPasteboard` and `NSPasteboard` were added on
+  their own — Apple-specific, near-zero false positive — so a stealer dropped
+  as a plain `.js` with no `osascript` on the line is caught, which it was
+  not before. Net: fewer false positives and better coverage.
+- **The whitespace heuristic read generated output.** `node_modules` was
+  excluded but `.next/` was not, and a bundler legitimately emits long
+  whitespace runs — three findings per build in a clean repo. Now also skips
+  `.nuxt`, `.turbo`, `.svelte-kit`, `.output`, `.vercel`, `.cache`,
+  `coverage`. `dist/` and `build/` are deliberately still scanned: those get
+  committed, and are a real place to hide a payload.
+- **The new stray-asset check flagged `.gitkeep`.** Empty files and the usual
+  placeholders are now skipped — a task has to execute something, and an
+  empty file cannot be it.
+
+Result across 11 local clones: `tech-ember-fest` 43 → 0, `chief-of-staff`
+2 → 0, with the `.llf` sample still caught and all 34 selftest checks green.
+
 ## [1.3.1] — 2026-10-02
 
 ### Fixed — `scan github` reported clean on an infected repo

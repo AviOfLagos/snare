@@ -13,8 +13,10 @@ Sec-V
 global\['_t_s'\]
 global\['_t_u'\]
 global\['_V'\]
-_t_s
-_t_u
+global\['_H2'\]
+_global\._t_s
+_global\._t_u
+_global\._H2
 #
 # --- Generic inline-node execution with obfuscated globals ---
 node[[:space:]]+.*-e[[:space:]]+.*global\[
@@ -23,7 +25,14 @@ node[[:space:]]+.*--eval[[:space:]]+.*global\[
 # --- JXA clipboard stealer ---
 osascript.*generalPasteboard
 osascript.*NSPasteboard
-changeCount
+# These two are Apple-specific and near-zero false positive on their own, so
+# a stealer dropped as a plain .js (no osascript on the line) is still caught.
+generalPasteboard
+NSPasteboard
+# Bare `changeCount` was here. NSPasteboard.changeCount is the real signal,
+# but the bare word matched vitest's diff printer (`changeCounts.a`) and so
+# fired on any project with a test runner. Anchored to the API instead.
+[Pp]asteboard[^[:space:]]*[[:space:]]*\.?[[:space:]]*changeCount
 #
 # --- Shai-Hulud / known npm worm artifacts ---
 shai-hulud
@@ -45,7 +54,12 @@ eth-mainnet\.public\.blastapi\.io
 /0x/cls
 /0x/ls
 global\.i[[:space:]]*=
-_H2
+# Bare _H2 / _t_s / _t_u were here and matched any machine-generated code:
+# bwip-js names variables _H0.._H4 and @edge-runtime has PAUSED_H2_UPGRADE,
+# which produced 43 false positives in one repo's node_modules. The loader
+# always sets these as globals, so they are anchored above instead. Verified
+# against the plaintext sample: the anchored forms hit it just as the bare
+# token did, so nothing was given up.
 #
 # --- Fake-asset execution: payload disguised as a font/image, run by a
 #     hidden VS Code folderOpen task (seen in 3 repos, campaign A8-*) ---
