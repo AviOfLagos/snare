@@ -38,7 +38,6 @@ s1ngularity
 # (added after analysing Bitsaac/nexprove-web postcss.config.js, campaign A8-3379-6)
 0xa322E5f3D311D3080e6f0121063e9aDC2490Ef1a
 0xa322e5f3d311d3080e6f0121063e9adc2490ef1a
-eth\.blockscout\.com
 1rpc\.io/eth
 eth\.drpc\.org
 ethereum-rpc\.publicnode\.com
@@ -68,3 +67,16 @@ node[[:space:]]+\./public/fonts/.*\.woff2
 global\['e'\][[:space:]]*=[[:space:]]*['\"]NPM['\"]
 [[:space:]]--token[[:space:]]+.?http://[0-9.]+:[0-9]+\|
 VSCodeUpdater\.log
+#
+# --- Campaign observed 2026-10-02: EtherHiding loader (blockchain dead-drop C2)
+# Delivered as a VS Code folderOpen task executing a fake font. Confirmed in
+# ossf/malicious-packages across many MAL-2026-* advisories.
+91\.218\.183\.174
+/0x/cls
+/0x/ls
+helloipbot
+a322e5f3d311d3080e6f0121063e9adc2490ef1a
+NONCE_FANOUT
+y-p_>d\$0B
+# The dead drop encodes the C2 as the first 8 bytes of a tx `to` address,
+# so the IP rotates. See `snare c2` for the live value.

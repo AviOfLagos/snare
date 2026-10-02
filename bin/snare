@@ -3,7 +3,7 @@
 # https://github.com/  •  MIT
 set -uo pipefail
 
-SNARE_VERSION="1.2.0"
+SNARE_VERSION="1.3.0"
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so
 # BASH_SOURCE is the link, not the real file. (readlink -f is not portable.)
 _src="${BASH_SOURCE[0]}"
@@ -47,6 +47,7 @@ fi
 . "$_dir/lib/fix.sh"
 . "$_dir/lib/notify.sh"
 . "$_dir/lib/update.sh"
+. "$_dir/lib/c2.sh"
 . "$_dir/lib/selftest.sh"
 . "$_dir/lib/report.sh"
 . "$_dir/lib/baseline.sh"
@@ -73,6 +74,8 @@ ${C_BLD}TRACK${C_OFF}
   snare guard origins           where detections came from (the file to clean)
   snare guard start | stop      restart it after an update
   snare guard uninstall
+  snare c2                      the C2 the guard kills on, live from the dead drop
+  snare c2 --refresh            re-resolve it now (otherwise daily, in the background)
 
 ${C_BLD}FIND${C_OFF}
   snare scan                    scan the current directory
@@ -174,7 +177,10 @@ main(){
     shield) cmd_shield "$@" ;;
     rotate) cmd_rotate "$@" ;;
     # internal: the detached cache refresh behind the update nudge
+    c2)     cmd_c2 "$@" ;;
     _update-refresh) snare_update_refresh; exit 0 ;;
+    # internal: the detached dead-drop refresh behind the guard's kill list
+    _c2-refresh) snare_c2_refresh; exit 0 ;;
     respond) cmd_respond "$@" ;;
     selftest) cmd_selftest "$@" ;;
     version|--version|-v)

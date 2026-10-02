@@ -108,6 +108,33 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
              -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -30)
     [ "$bad" = 0 ] && grn "  all font files have valid magic bytes"
 
+    # Extension-blind companion to the magic-byte test above. A payload only
+    # needs an extension snare does not glob: the 2026-10 sample shipped as
+    # public/fonts/fa-solid-300.llf (magic 09090909 — a wall of tabs) and was
+    # therefore invisible to BOTH the font test above and the whitespace test
+    # below, while the same campaign's .woff2 drop was caught immediately.
+    # Asset directories hold assets; anything else in one is worth a look.
+    # Known residual gap: a payload wearing .eot or .svg still passes, because
+    # those are real asset types here and their magic is not verified.
+    local stray=0
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      case "${f##*.}" in
+        woff2|woff|ttf|otf|eot|svg|png|jpg|jpeg|gif|webp|avif|ico|mp4|webm|mp3|wav|pdf) continue ;;
+        css|scss|less|map|json|md|txt|html|htm|xml|wasm|webmanifest) continue ;;
+        # Scripts in an asset directory are ordinary for a web project, and
+        # section 4 already reads them for a hidden payload.
+        js|mjs|cjs|ts|tsx|jsx) continue ;;
+      esac
+      _hit "$f sits in an asset directory but is not an asset type"
+      # Squeeze the whitespace: the 2026-10 sample opens with ~2000 tabs, so
+      # an unsqueezed preview prints a blank line and hides the tell.
+      printf '        %s\n' "$(head -c 4000 "$f" 2>/dev/null | tr -d '\0' | tr '\t\n' '  ' | tr -s ' ' | cut -c1-100)"
+      stray=1
+    done < <(find . -type f \( -path '*/fonts/*' -o -path '*/assets/*' -o -path '*/static/*' \) \
+             -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -200)
+    [ "$stray" = 0 ] && grn "  no stray non-asset files in asset directories"
+
     art="$(find . \( -name setup_bun.js -o -name bun_environment.js -o -name 'shai-hulud*' -o -name truffleSecrets\* \) \
          -not -path "*/node_modules/*" 2>/dev/null | head -10)"
     [ -n "$art" ] && while IFS= read -r f; do _hit "known worm artifact: $f"; done <<< "$art"

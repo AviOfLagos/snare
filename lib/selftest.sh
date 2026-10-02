@@ -16,6 +16,53 @@ _st_kept(){  if [ -e "$1" ]; then _st_ok  "$2"; else _st_bad "$2"; fi; }
 _st_has(){   if grep -q "$2" "$1" 2>/dev/null; then _st_ok  "$3"; else _st_bad "$3"; fi; }
 _st_lacks(){ if grep -q "$2" "$1" 2>/dev/null; then _st_bad "$3"; else _st_ok  "$3"; fi; }
 
+# Dead-drop C2 resolution and the extension-blind asset check. Both exist
+# because the 2026-10 sample evaded the font-magic and whitespace tests by
+# wearing an extension snare did not glob (.llf), while resolving its C2 from
+# a blockchain dead drop rather than hardcoding it.
+_st_deaddrop(){
+  hdr "Dead-drop C2 and stray assets"
+
+  # The decoder is pure arithmetic, so it is checked against a known-good
+  # pair rather than the live chain: the test must not need the network.
+  local got want="91.218.183.174 91.218.183.174"
+  got="$(snare_c2_decode 0x5bdab7ae5bdab7ae68656c6c6f6970626f742121)"
+  if [ "$got" = "$want" ]; then
+    _st_ok  "a dead-drop address decodes to its two C2 IPs"
+  else
+    _st_bad "a dead-drop address decodes to its two C2 IPs (got '$got')"
+  fi
+
+  # The live C2 must be in the guard's kill list even with no cache present.
+  if SNARE_C2_CACHE=/nonexistent snare_c2_ips | grep -q '91\.218\.183\.174'; then
+    _st_ok  "the known C2 is in the kill list without a cache"
+  else
+    _st_bad "the known C2 is in the kill list without a cache"
+  fi
+
+  local A; A="$(mktemp -d "${TMPDIR:-/tmp}/snaredrop.XXXXXX")" || {
+    _st_bad "cannot create a temp directory"; return 1; }
+  A="$(cd "$A" && pwd)"
+  mkdir -p "$A/public/fonts"
+  # A payload wearing an extension nothing globs, hidden past a tab wall.
+  python3 - "$A/public/fonts/fa-solid-300.llf" <<'PYX'
+import sys
+open(sys.argv[1], "w").write("\t" * 2000 + "global['!']='8-J';eval(x);\n")
+PYX
+  # Things that must NOT be reported: a real font and an ordinary script.
+  printf 'wOF2\x00\x01\x00\x00padpadpad' > "$A/public/fonts/real.woff2"
+  printf 'export const x = 1;\n'            > "$A/public/fonts/helper.js"
+
+  local o; o="$(cd "$A" && cmd_scan_repo . 2>&1)"
+  _st_expect "a payload wearing an unglobbed extension is flagged" \
+             hit   'fa-solid-300\.llf'  "$o"
+  _st_expect "a genuine font in an asset directory is not flagged" \
+             clean 'real\.woff2 sits'   "$o"
+  _st_expect "an ordinary script in an asset directory is not flagged" \
+             clean 'helper\.js sits'    "$o"
+  rm -rf "$A"
+}
+
 # $1 = human label, $2 = expect (hit|clean), $3 = grep pattern, $4 = scan output
 #
 # Only [!] lines count as findings. A [~] note (e.g. "this line is long") is
@@ -131,6 +178,7 @@ JSON
 
   _st_remediation
   _st_doctor
+  _st_deaddrop
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
 

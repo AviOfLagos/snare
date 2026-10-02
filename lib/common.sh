@@ -78,6 +78,15 @@ require_gh(){
   gh auth setup-git >/dev/null 2>&1 || true   # no prompts on private clones
 }
 
+# Python 3 under whatever name this platform gives it: Debian/Ubuntu and macOS
+# expose python3, Git Bash on Windows often only has the py launcher.
+snare_py(){
+  if   command -v python3 >/dev/null 2>&1; then python3 "$@"
+  elif command -v python  >/dev/null 2>&1; then python  "$@"
+  elif command -v py      >/dev/null 2>&1; then py -3   "$@"
+  else die "Python 3 is required but not installed"; fi
+}
+
 
 # --- portable primitives ---------------------------------------------------
 # First four bytes of a file as lowercase hex, e.g. "774f4632" (wOF2).

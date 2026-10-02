@@ -7,6 +7,45 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.3.0] — 2026-10-02
+
+### Fixed — scanner reported clean on an infected repo
+
+- **A payload wearing an extension snare did not glob was invisible.** The
+  2026-10 sample shipped as `public/fonts/fa-solid-300.llf` — about 2000 tab
+  characters followed by an obfuscated loader. Section 3 globs only
+  `.woff2/.woff/.ttf/.otf`, and section 4 only `.js/.mjs/.cjs/.ts`, so the
+  file was read by neither and the scan printed "no code hidden past
+  whitespace". The same campaign's `.woff2` drop was caught immediately, so
+  the extension was the whole evasion. Section 3 now also reports any file in
+  a `fonts/`, `assets/` or `static/` directory whose extension is not an
+  asset or script type, and previews it with whitespace squeezed.
+  Known residual gap, recorded in the code: `.eot` and `.svg` still pass,
+  because they are real asset types here and their magic is not verified.
+
+### Added — the guard follows a rotating C2
+
+- **`snare c2`** resolves the live C2 from the blockchain dead drop the
+  loader itself reads, so a shipped IP list no longer goes stale by design.
+  The loader takes the latest transaction from a fixed Ethereum sender and
+  reads the first 8 bytes of that transaction's `to` address as two IPv4
+  addresses; the operator rotates by signing a new transaction. snare reads
+  the same drop and feeds it into the guard's kill list.
+  `91.218.183.174` — live at the time of writing, and absent from the
+  previous hardcoded list — is now covered both dynamically and as a builtin.
+  The lookup is read-only against a public explorer, refreshes at most once
+  a day in a detached process, and the 1-second guard loop only ever reads a
+  cached file, so the hot path stays fork-free.
+- `snare_py` picks python3 / python / `py -3`, for Git Bash hosts that only
+  ship the launcher.
+- New IOCs for the 2026-10 campaign: the C2, both staging paths, the sender
+  address, the `helloipbot` dead-drop marker, the second XOR key and
+  `NONCE_FANOUT`. Patterns generic enough to fire on ordinary web3 code were
+  deliberately left out.
+- Five selftest checks covering the decoder, the kill list without a cache,
+  and that the stray-asset check flags the `.llf` shape while leaving a real
+  font and an ordinary script in an asset directory alone. 32 checks total.
+
 ## [Unreleased]
 
 ### Fixed — remediation

@@ -188,7 +188,7 @@ guard_scan_once(){
   local ip
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    for ip in ${SNARE_C2_IPS:-23.27.13.135 193.247.144.38 194.11.226.41}; do
+    for ip in ${SNARE_C2_IPS:-$(snare_c2_ips)}; do
       case "$line" in *"$ip"*)
         pid="$(printf '%s' "$line" | snare_net_pid)"; [ -z "$pid" ] && continue
         [ "$pid" = "$$" ] && continue
@@ -238,7 +238,22 @@ cmd_guard(){
       done
       echo "[$(date '+%F %T')] guard started (interval=${iv}s, pid=$$)" | tee -a "$SNARE_LOGS/guard.log"
       trap 'echo "[$(date "+%F %T")] guard stopped" >> "$SNARE_LOGS/guard.log"; exit 0' INT TERM
-      while true; do guard_scan_once || true; sleep "$iv"; done ;;
+      # The kill list follows the dead drop (see lib/c2.sh), but this loop
+      # runs every second, so it must stay fork-free: resolve the list once
+      # here and re-resolve about hourly rather than on every tick.
+      snare_c2_maybe_refresh
+      SNARE_C2_IPS="$(snare_c2_ips)"
+      local ticks=0
+      while true; do
+        guard_scan_once || true
+        ticks=$(( ticks + 1 ))
+        if [ "$ticks" -ge 3600 ]; then
+          ticks=0
+          snare_c2_maybe_refresh
+          SNARE_C2_IPS="$(snare_c2_ips)"
+        fi
+        sleep "$iv"
+      done ;;
     install)   guard_service install ;;
     uninstall) guard_service uninstall ;;
     start)     guard_service start ;;
