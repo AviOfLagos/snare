@@ -19,7 +19,7 @@ import html
 import re
 import sys
 
-REPO = "https://github.com/AviOfLagos/snare"
+REPO = "https://github.com/nexlabz/snare"
 
 
 def inline(text: str) -> str:

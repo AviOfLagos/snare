@@ -12,7 +12,7 @@ snare_version_at(){
 
 # Remote HEAD version, via the raw file. Empty on any failure — never fatal.
 snare_remote_version(){
-  local url="https://raw.githubusercontent.com/AviOfLagos/snare/main/bin/snare"
+  local url="https://raw.githubusercontent.com/nexlabz/snare/main/bin/snare"
   curl -fsSL --max-time 10 "$url" 2>/dev/null \
     | grep -m1 '^SNARE_VERSION=' | cut -d'"' -f2
 }
@@ -41,6 +41,40 @@ snare_commits_behind(){
     br=main
   fi
   git -C "$SNARE_ROOT" rev-list --count "HEAD..origin/$br" 2>/dev/null
+}
+
+# The repository moved to the nexlabz organisation. GitHub redirects the old
+# path, so clones keep working and nothing looks broken — but a redirect holds
+# only while no repository sits at that name. Whoever creates one there owns
+# the update channel of a malware scanner: they decide what version you are
+# told you are on, and what `snare update` pulls.
+#
+# So this runs wherever snare talks to its own remote, not only in
+# `cmd_update` — the refresh that feeds the "you are behind" notice reaches the
+# network first, and a notice sourced from a hijacked remote is worse than no
+# notice at all.
+#
+# Matched case-insensitively, because GitHub treats owner and repository names
+# that way and `git clone github.com/avioflagos/snare` produces a remote that
+# works and would not match a case-sensitive glob.
+#
+# $1 = quiet (no output); anything else announces the change.
+snare_fix_stale_remote(){
+  [ -d "$SNARE_ROOT/.git" ] || return 0
+  local ru lower
+  ru="$(git -C "$SNARE_ROOT" remote get-url origin 2>/dev/null)" || return 0
+  [ -n "$ru" ] || return 0
+  lower="$(printf '%s' "$ru" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    *avioflagos/snare*) ;;
+    *) return 0 ;;
+  esac
+  git -C "$SNARE_ROOT" remote set-url origin \
+    "https://github.com/nexlabz/snare.git" 2>/dev/null || return 0
+  [ "${1:-}" = quiet ] && return 0
+  ylw "  the repository moved; origin repointed to github.com/nexlabz/snare"
+  dim "  (the old path only redirects while no repository sits at that name)"
+  return 0
 }
 
 # Cheap, quiet check used by `snare version`. Prints a nudge or nothing.
@@ -89,6 +123,7 @@ UPDATE_CACHE="$SNARE_HOME/update-state"
 # Refresh the cache. Runs detached; never writes to the terminal.
 snare_update_refresh(){
   local remote local_sha behind="" rv=""
+  snare_fix_stale_remote quiet
   # A zip or tarball install has no .git, so commit distance does not exist —
   # and this function used to return here, which meant those users were never
   # told anything at all, ever. The version in the remote's bin/snare is the
@@ -252,9 +287,11 @@ cmd_update(){
 
   if [ ! -d "$SNARE_ROOT/.git" ]; then
     red "  $SNARE_ROOT is not a git checkout"
-    dim "  reinstall:  git clone https://github.com/AviOfLagos/snare ~/snare && cd ~/snare && ./install.sh"
+    dim "  reinstall:  git clone https://github.com/nexlabz/snare ~/snare && cd ~/snare && ./install.sh"
     return 1
   fi
+
+  snare_fix_stale_remote
 
   # Refuse to discard the user's own edits unless they say so.
   local dirty; dirty="$(git -C "$SNARE_ROOT" status --porcelain 2>/dev/null)"

@@ -2,7 +2,7 @@
 #
 #   jobs:
 #     snare:
-#       uses: AviOfLagos/snare/.github/workflows/scan.yml@main
+#       uses: nexlabz/snare/.github/workflows/scan.yml@main
 #
 # Make it a required status check in branch protection and a pull request
 # cannot be merged until it passes.
@@ -51,7 +51,7 @@ jobs:
           ref='${{ inputs.snare-ref }}'
           dest="$RUNNER_TEMP/snare"
           git init --quiet "$dest"
-          git -C "$dest" remote add origin https://github.com/AviOfLagos/snare.git
+          git -C "$dest" remote add origin https://github.com/nexlabz/snare.git
           if git -C "$dest" fetch --quiet --depth 1 origin "$ref" 2>/dev/null; then
             echo "scanning with snare @ $ref"
           else

@@ -142,6 +142,34 @@ an ordinary local amend or rebase stays silent.
   1.1.0 forever; it now names the release that fixed the false-clean bug the
   running version still has.
 
+### Changed — the repository moved to github.com/nexlabz/snare
+
+GitHub redirects the old path, so existing clones keep working — but a
+redirect holds only while no repository exists at that name. The moment one
+does, every install's `snare update` and version check would resolve somewhere
+nobody vouched for, which for a tool whose whole job is supply-chain malware is
+the one failure it cannot have. So nothing relies on the redirect any more:
+
+- The update channel, the reusable CI workflow, the plugin manifests, the skill
+  and the field-guide links all name the canonical path.
+- A stale `origin` is repointed wherever snare talks to its own remote — not
+  only in `snare update`, but in the background refresh that feeds the "you
+  are behind" notice, which reaches the network first. A notice sourced from a
+  hijacked remote would be worse than no notice at all. `snare update` says so
+  out loud; the refresh does it silently, because it must never write to the
+  terminal. It runs before the local-modifications guard, so a checkout with
+  edits still gets repointed, and matches case-insensitively because GitHub
+  treats owner names that way and `clone github.com/avioflagos/snare` produces
+  a working remote that a case-sensitive match would miss. An `ssh://` remote
+  on the old path is moved to the canonical HTTPS URL.
+- The site moved with it. `avioflagos.github.io/snare` now returns 404 and the
+  field guide is at **nexlabz.github.io/snare** — which also means every
+  canonical URL, `og:url` and sitemap entry on the published site had been
+  pointing at a dead host.
+
+Nothing in `promo/` was rewritten: those are articles already published
+elsewhere, and editing the local copy changes nothing anyone reads.
+
 ### Fixed — the website could not drift, but it did
 
 `## [Unreleased]` is not a version, so `changelog-gen` ignored the heading and

@@ -11,7 +11,7 @@ A supply-chain attack `npm audit` cannot see, and the scanner that finds it.
 repository, so there is no malicious dependency, nothing in the lockfile, and
 nothing for Dependabot to report. One sample sat in a repo for five months.
 
-Field guide: <https://avioflagos.github.io/snare/>
+Field guide: <https://nexlabz.github.io/snare/>
 
 ## When to reach for this
 

@@ -35,7 +35,7 @@ on:
 
 jobs:
   snare:
-    uses: AviOfLagos/snare/.github/workflows/scan.yml@main
+    uses: nexlabz/snare/.github/workflows/scan.yml@main
     with:
       # true scans every commit, not just the tip. Slower, catches a payload
       # that was committed and later removed.

@@ -15,8 +15,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SITE="https://avioflagos.github.io/snare/"
-REPO="https://github.com/AviOfLagos/snare"
+SITE="https://nexlabz.github.io/snare/"
+REPO="https://github.com/nexlabz/snare"
 tmp_rel="$(mktemp "${TMPDIR:-/tmp}/snarerel.XXXXXX")"
 trap 'rm -f "$tmp_rel"' EXIT
 VERSION="$(sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' ../CHANGELOG.md | head -1)"
@@ -258,7 +258,7 @@ NAVBOT
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="$REPO">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v$VERSION</a> · MIT</span>
+    <span><a href="$REPO">github.com/nexlabz/snare</a> · <a href="changelog.html">v$VERSION</a> · MIT</span>
   </div>
 </footer>
 </div>

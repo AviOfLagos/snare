@@ -17,11 +17,11 @@ noticed.
 snare watches your machine for the loader and kills it, scans every repository you can reach,
 removes the payload (including from history), and helps you warn your collaborators.
 
-**[Read the field guide →](https://avioflagos.github.io/snare/)** — how it works, how to check
+**[Read the field guide →](https://nexlabz.github.io/snare/)** — how it works, how to check
 your machine by hand, install instructions for every platform.
 
 ```bash
-git clone https://github.com/AviOfLagos/snare ~/snare
+git clone https://github.com/nexlabz/snare ~/snare
 cd ~/snare && ./install.sh
 gh auth login          # your own account — snare ships no token
 snare doctor
@@ -53,7 +53,7 @@ out of them. The operator rotates the IP by sending one transaction.
 ## Install
 
 ```bash
-git clone https://github.com/AviOfLagos/snare ~/snare && cd ~/snare && ./install.sh
+git clone https://github.com/nexlabz/snare ~/snare && cd ~/snare && ./install.sh
 gh auth login          # your own account — snare ships no token
 snare doctor
 ```
@@ -61,7 +61,7 @@ snare doctor
 ### For coding agents — Claude Code
 
 ```
-/plugin marketplace add AviOfLagos/snare
+/plugin marketplace add nexlabz/snare
 /plugin install snare@snare
 ```
 

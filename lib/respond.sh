@@ -7,7 +7,7 @@
 # from a still-infected machine simply lets it re-inject.
 
 RESPOND_STATE="$SNARE_HOME/respond-state"
-DOC_URL="https://avioflagos.github.io/snare/#infected"
+DOC_URL="https://nexlabz.github.io/snare/#infected"
 
 # ---- state (resumable: this is an hour of work for a bad case) -------------
 _rs_get(){ [ -f "$RESPOND_STATE" ] || return 1; grep -m1 "^$1=" "$RESPOND_STATE" 2>/dev/null | cut -d= -f2-; }

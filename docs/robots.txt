@@ -93,4 +93,4 @@ Allow: /
 User-agent: YouBot
 Allow: /
 
-Sitemap: https://avioflagos.github.io/snare/sitemap.xml
+Sitemap: https://nexlabz.github.io/snare/sitemap.xml
