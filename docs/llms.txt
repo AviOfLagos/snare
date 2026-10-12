@@ -47,12 +47,12 @@ repository is delivery. Removing it does not un-steal a token.
 
 ## Pages
 
-- [Home](https://avioflagos.github.io/snare/): the threat, how it works, why npm audit misses it
-- [Check your machine](https://avioflagos.github.io/snare/check.html): four commands, nothing to install
-- [If you are infected](https://avioflagos.github.io/snare/infected.html): the response walkthrough
-- [Install](https://avioflagos.github.io/snare/install.html): every platform, plus a prompt for AI assistants
-- [Command reference](https://avioflagos.github.io/snare/commands.html): every command and its honest limits
-- [Changelog](https://avioflagos.github.io/snare/changelog.html): every release, and what was broken before it
-- [Report a bug](https://avioflagos.github.io/snare/security.html): false clean results wanted most of all
-- [Community](https://avioflagos.github.io/snare/community.html): field reports and the open questions
-- [Source](https://github.com/AviOfLagos/snare)
+- [Home](https://nexlabz.github.io/snare/): the threat, how it works, why npm audit misses it
+- [Check your machine](https://nexlabz.github.io/snare/check.html): four commands, nothing to install
+- [If you are infected](https://nexlabz.github.io/snare/infected.html): the response walkthrough
+- [Install](https://nexlabz.github.io/snare/install.html): every platform, plus a prompt for AI assistants
+- [Command reference](https://nexlabz.github.io/snare/commands.html): every command and its honest limits
+- [Changelog](https://nexlabz.github.io/snare/changelog.html): every release, and what was broken before it
+- [Report a bug](https://nexlabz.github.io/snare/security.html): false clean results wanted most of all
+- [Community](https://nexlabz.github.io/snare/community.html): field reports and the open questions
+- [Source](https://github.com/nexlabz/snare)

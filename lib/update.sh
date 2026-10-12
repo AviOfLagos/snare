@@ -12,7 +12,7 @@ snare_version_at(){
 
 # Remote HEAD version, via the raw file. Empty on any failure — never fatal.
 snare_remote_version(){
-  local url="https://raw.githubusercontent.com/AviOfLagos/snare/main/bin/snare"
+  local url="https://raw.githubusercontent.com/nexlabz/snare/main/bin/snare"
   curl -fsSL --max-time 10 "$url" 2>/dev/null \
     | grep -m1 '^SNARE_VERSION=' | cut -d'"' -f2
 }
@@ -252,9 +252,26 @@ cmd_update(){
 
   if [ ! -d "$SNARE_ROOT/.git" ]; then
     red "  $SNARE_ROOT is not a git checkout"
-    dim "  reinstall:  git clone https://github.com/AviOfLagos/snare ~/snare && cd ~/snare && ./install.sh"
+    dim "  reinstall:  git clone https://github.com/nexlabz/snare ~/snare && cd ~/snare && ./install.sh"
     return 1
   fi
+
+  # Existing clones point at the old path. GitHub redirects it, so they keep
+  # working — but a redirect holds only while no repository exists at that
+  # name. The moment one does, every install's `snare update` would resolve
+  # somewhere nobody vouched for, which for a tool whose whole job is
+  # supply-chain malware is the one failure it cannot have. Repoint on the way
+  # past, and say so rather than changing someone's remote silently.
+  local ru
+  ru="$(git -C "$SNARE_ROOT" remote get-url origin 2>/dev/null)"
+  case "$ru" in
+    *AviOfLagos/snare*)
+      if git -C "$SNARE_ROOT" remote set-url origin \
+           "https://github.com/nexlabz/snare.git" 2>/dev/null; then
+        ylw "  the repository moved; origin repointed to github.com/nexlabz/snare"
+        dim "  (the old path only redirects while no repository sits at that name)"
+      fi ;;
+  esac
 
   # Refuse to discard the user's own edits unless they say so.
   local dirty; dirty="$(git -C "$SNARE_ROOT" status --porcelain 2>/dev/null)"

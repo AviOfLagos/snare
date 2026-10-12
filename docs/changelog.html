@@ -7,12 +7,12 @@
 <meta name="description" content="Versions follow semantic versioning. Anything that made snare report clean on an infected repository is listed first in its release, because that is the failure that matters most in a scanner.">
 <meta name="author" content="AviOfLagos">
 <meta name="robots" content="index,follow">
-<link rel="canonical" href="https://avioflagos.github.io/snare/changelog.html">
+<link rel="canonical" href="https://nexlabz.github.io/snare/changelog.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="snare">
 <meta property="og:title" content="Changelog — every release, and what was broken before it — snare">
 <meta property="og:description" content="Versions follow semantic versioning. Anything that made snare report clean on an infected repository is listed first in its release, because that is the failure that matters most in a scanner.">
-<meta property="og:url" content="https://avioflagos.github.io/snare/changelog.html">
+<meta property="og:url" content="https://nexlabz.github.io/snare/changelog.html">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Changelog — every release, and what was broken before it — snare">
 <meta name="twitter:description" content="Versions follow semantic versioning. Anything that made snare report clean on an infected repository is listed first in its release, because that is the failure that matters most in a scanner.">
@@ -28,8 +28,8 @@
 try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
- {"@type":"ListItem","position":1,"name":"snare","item":"https://avioflagos.github.io/snare/"},
- {"@type":"ListItem","position":2,"name":"Changelog","item":"https://avioflagos.github.io/snare/changelog.html"}]}
+ {"@type":"ListItem","position":1,"name":"snare","item":"https://nexlabz.github.io/snare/"},
+ {"@type":"ListItem","position":2,"name":"Changelog","item":"https://nexlabz.github.io/snare/changelog.html"}]}
 </script>
 </head>
 <body data-page="changelog">
@@ -73,7 +73,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     <ul>
       <li><a href="commands.html">Command reference</a></li>
       <li><a href="security.html">Report a bug</a></li>
-      <li><a href="https://github.com/AviOfLagos/snare/commits/main">Full commit log</a></li>
+      <li><a href="https://github.com/nexlabz/snare/commits/main">Full commit log</a></li>
     </ul>
   </aside>
 
@@ -112,14 +112,14 @@ snare update && snare selftest</pre></div></div>
       <span class="rel-date">2026-10-12</span>
         <span class="tag now">Current</span>
     </div>
-    <p class="lede">Three people found this campaign on their own machines and wrote up what they saw: [<a href="https://github.com/kleenpulse">@kleenpulse</a>](https://github.com/kleenpulse) <a href="https://github.com/AviOfLagos/snare/pull/47">#47</a>, [<a href="https://github.com/ibraheembello">@ibraheembello</a>](https://github.com/ibraheembello) <a href="https://github.com/AviOfLagos/snare/pull/46">#46</a> and [<a href="https://github.com/SamuelOshin">@SamuelOshin</a>](https://github.com/SamuelOshin) <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>. Every item below is a sample or a bug they reported, with the reproduction and the measurement taken here before and after.</p>
+    <p class="lede">Three people found this campaign on their own machines and wrote up what they saw: [<a href="https://github.com/kleenpulse">@kleenpulse</a>](https://github.com/kleenpulse) <a href="https://github.com/nexlabz/snare/pull/47">#47</a>, [<a href="https://github.com/ibraheembello">@ibraheembello</a>](https://github.com/ibraheembello) <a href="https://github.com/nexlabz/snare/pull/46">#46</a> and [<a href="https://github.com/SamuelOshin">@SamuelOshin</a>](https://github.com/SamuelOshin) <a href="https://github.com/nexlabz/snare/pull/44">#44</a>. Every item below is a sample or a bug they reported, with the reproduction and the measurement taken here before and after.</p>
     <div class="rel-group">
       <h3 class="crit">Fixed — false clean results</h3>
       <ul class="rel-list">
         <li class="crit"><strong>The run scripts, not the install hooks.</strong> <code>package.json</code> keeps every script it had and gains <code>"dev": "node api.js &amp;&amp; next dev"</code> (and the same for <code>build</code> and <code>start</code>), so nothing has to be installed for the loader to run and <code>--ignore-scripts</code> is irrelevant. Section 2 only ever read <code>preinstall</code>/<code>postinstall</code>/<code>prepare</code>. The shape on its own is an ordinary build step — <code>node scripts/build.js &amp;&amp; tsc</code> is honest work — so the check fires only when the file being run is itself obfuscated: one line over 5,000 characters, a <code>_0x</code> identifier array, or an assignment to <code>global[..]</code>.</li>
         <li class="crit"><strong>The AI agent's own config is the persistence.</strong> A <code>SessionStart</code> hook in <code>.claude/settings.json</code> runs a dropper every time a session opens. It survives removing the package that delivered it, npm never sees it, and the <code>.claude/setup.mjs</code> and <code>.vscode/setup.mjs</code> copies re-create each other, so removing one directory fixes nothing. Hooks are a real feature — snare ships a plugin itself — so the command decides: a <code>prettier</code> hook is a note, <code>node .vscode/setup.mjs</code> is a finding.</li>
         <li class="crit"><strong>The obfuscated loader set <code>global['!']</code>, not <code>global.i</code>.</strong> The marker list and the history cleaner both keyed on <code>global\.i</code>, so the obfuscated half of this campaign matched nothing and <code>--purge-history</code> rewrote nothing while reporting success. The campaign tags <code>4738-2</code> and <code>2503-2</code>, the push-forging artefacts (<code>temp_auto_push.bat</code>, <code>temp_interactive_push.bat</code>, <code>branch_structure.json</code> — added to <code>.gitignore</code> so they stay out of <code>git status</code>) and the Windows clipboard stealer (<code>GetClipboardSequenceNumber</code> under a hidden <code>-EncodedCommand</code>) are IOCs now.</li>
-        <li class="crit"><strong><code>doctor</code> never looked at npm on Windows.</strong> It printed <code>no npm installation found to check</code> on every Windows host: it knew only the Unix <code>lib/node_modules</code> layout, never <code>%APPDATA%\npm\node_modules\npm</code>. That is also the copy that <em>runs</em> — the <code>npm</code> and <code>npx</code> shims prefer a global-prefix install over the one bundled in Program Files, so a single <code>npm i -g npm</code> is enough. A live infection sat there while <code>doctor</code> reported clean <a href="https://github.com/AviOfLagos/snare/pull/46">#46</a>. Size is checked first, because it needs no knowledge of the malware at all: measured 407 bytes here and 419 bytes on the reference host, against 503,857 and 1,332,948 bytes in the two reported infections.</li>
+        <li class="crit"><strong><code>doctor</code> never looked at npm on Windows.</strong> It printed <code>no npm installation found to check</code> on every Windows host: it knew only the Unix <code>lib/node_modules</code> layout, never <code>%APPDATA%\npm\node_modules\npm</code>. That is also the copy that <em>runs</em> — the <code>npm</code> and <code>npx</code> shims prefer a global-prefix install over the one bundled in Program Files, so a single <code>npm i -g npm</code> is enough. A live infection sat there while <code>doctor</code> reported clean <a href="https://github.com/nexlabz/snare/pull/46">#46</a>. Size is checked first, because it needs no knowledge of the malware at all: measured 407 bytes here and 419 bytes on the reference host, against 503,857 and 1,332,948 bytes in the two reported infections.</li>
       </ul>
     </div>
     <div class="rel-group">
@@ -133,10 +133,10 @@ snare update && snare selftest</pre></div></div>
     <div class="rel-group">
       <h3 class="crit">Fixed — destructive behaviour</h3>
       <ul class="rel-list">
-        <li class="crit"><strong>A 0-byte fake font was treated as a genuine font.</strong> <code>magic4</code> returns nothing for a file with no bytes to read, and <code>is_font</code> read that as "font", so a dropper committed as an empty <code>public/fonts/fa-solid-500.woff2</code> was skipped by <code>fix</code> and left in place along with the task that overwrites and runs it <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>.</li>
-        <li class="crit"><strong><code>tasks.json</code> is JSONC, and that deleted people's build tasks.</strong> Real VS Code files carry <code>//</code> comments, <code>/<em> </em>/</code> blocks and a trailing comma; <code>json.loads</code> rejects all three, and the caller read "cannot parse" as "nothing legitimate in it" and removed the file. A project with honest build tasks plus one injected <code>folderOpen</code> task lost every task it had <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>. Both cleaners now parse JSONC, and the history cleaner identifies a <code>tasks.json</code> blob by content — <code>git filter-repo</code> hands its blob callback no filename, which is why a purge rewrote payload lines but left every injected task sitting in history.</li>
-        <li class="crit"><strong><code>fix</code> invented a branch called <code>origin</code> and pushed it.</strong> <code>refs/remotes/origin/HEAD</code> short-names to plain <code>origin</code>, which passes <code>grep -v HEAD</code>; <code>${ref#origin/}</code> then leaves <code>origin</code> unchanged, so the tip-cleaning loop created a local branch of that name and force-pushed it as <code>refs/heads/origin</code> on the remote being remediated <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>.</li>
-        <li class="crit"><strong>A failed push was reported as a success.</strong> <code>git push ... | tail -2</code> discards the exit status, so a 443 timeout printed its error into the pipe while the purge reported success and the rewritten history had never left the machine <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>.</li>
+        <li class="crit"><strong>A 0-byte fake font was treated as a genuine font.</strong> <code>magic4</code> returns nothing for a file with no bytes to read, and <code>is_font</code> read that as "font", so a dropper committed as an empty <code>public/fonts/fa-solid-500.woff2</code> was skipped by <code>fix</code> and left in place along with the task that overwrites and runs it <a href="https://github.com/nexlabz/snare/pull/44">#44</a>.</li>
+        <li class="crit"><strong><code>tasks.json</code> is JSONC, and that deleted people's build tasks.</strong> Real VS Code files carry <code>//</code> comments, <code>/<em> </em>/</code> blocks and a trailing comma; <code>json.loads</code> rejects all three, and the caller read "cannot parse" as "nothing legitimate in it" and removed the file. A project with honest build tasks plus one injected <code>folderOpen</code> task lost every task it had <a href="https://github.com/nexlabz/snare/pull/44">#44</a>. Both cleaners now parse JSONC, and the history cleaner identifies a <code>tasks.json</code> blob by content — <code>git filter-repo</code> hands its blob callback no filename, which is why a purge rewrote payload lines but left every injected task sitting in history.</li>
+        <li class="crit"><strong><code>fix</code> invented a branch called <code>origin</code> and pushed it.</strong> <code>refs/remotes/origin/HEAD</code> short-names to plain <code>origin</code>, which passes <code>grep -v HEAD</code>; <code>${ref#origin/}</code> then leaves <code>origin</code> unchanged, so the tip-cleaning loop created a local branch of that name and force-pushed it as <code>refs/heads/origin</code> on the remote being remediated <a href="https://github.com/nexlabz/snare/pull/44">#44</a>.</li>
+        <li class="crit"><strong>A failed push was reported as a success.</strong> <code>git push ... | tail -2</code> discards the exit status, so a 443 timeout printed its error into the pipe while the purge reported success and the rewritten history had never left the machine <a href="https://github.com/nexlabz/snare/pull/44">#44</a>.</li>
       </ul>
     </div>
     <div class="rel-group">
@@ -156,6 +156,14 @@ snare update && snare selftest</pre></div></div>
         <li><strong>A clean verdict says when it came from an outdated scanner.</strong> This is the one output that stops someone looking further, so <code>scan repo</code> now prints the commit distance and what that version could not see. Cache only — no network on that path.</li>
         <li><strong>The notice reaches installs that are not git checkouts.</strong> The refresh returned early without a <code>.git</code> directory, so anyone who downloaded a zip or tarball was never told anything at all. The version in the remote's <code>bin/snare</code> is recorded as well, which works without a repository.</li>
         <li><strong>The notice says what is missing, not just that something is.</strong> It named 1.1.0 forever; it now names the release that fixed the false-clean bug the running version still has.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Changed — the repository moved to github.com/nexlabz/snare</h3>
+      <ul class="rel-list">
+        <li>The update channel, the reusable CI workflow, the plugin manifests, the skill and the field-guide links all name the canonical path.</li>
+        <li><code>snare update</code> repoints a stale <code>origin</code> on the way past and says so, rather than changing someone's remote silently. It runs before the local-modifications guard, so a checkout with edits still gets repointed.</li>
+        <li>The site moved with it. <code>avioflagos.github.io/snare</code> now returns 404 and the field guide is at <strong>nexlabz.github.io/snare</strong> — which also means every canonical URL, <code>og:url</code> and sitemap entry on the published site had been pointing at a dead host.</li>
       </ul>
     </div>
     <div class="rel-group">
@@ -284,43 +292,43 @@ snare update && snare selftest</pre></div></div>
     <div class="rel-group">
       <h3 class="crit">Fixed — destructive behaviour</h3>
       <ul class="rel-list">
-        <li class="crit"><strong><code>fix</code> deleted the build config instead of cleaning it.</strong> The delete pass removed any file matching an IOC string, and a payload appended to <code>postcss.config.mjs</code> <em>is</em> an IOC string — so the file was gone before the strip pass further down the same function could reach it. It pushed a commit that removed the malware and the project's build with it. Stripping runs first now, and a file the project needs is cleaned and kept, never deleted. Reported and fixed by <a href="https://github.com/phoenixdahdev">@phoenixdahdev</a>. <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></li>
-        <li class="crit"><strong><code>.vscode/tasks.json</code> was deleted whole</strong>, losing honest build tasks along with the injected <code>folderOpen</code> one. Only the malicious task goes now. <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></li>
-        <li class="crit"><strong>A payload on a line of its own was never removed.</strong> Both cleaners keyed on the one-line signature. The new rule is gated narrowly — long, minified in shape, a hard campaign marker <em>and</em> obfuscated code — because dropping a whole line on a weaker signal is itself destructive. <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></li>
+        <li class="crit"><strong><code>fix</code> deleted the build config instead of cleaning it.</strong> The delete pass removed any file matching an IOC string, and a payload appended to <code>postcss.config.mjs</code> <em>is</em> an IOC string — so the file was gone before the strip pass further down the same function could reach it. It pushed a commit that removed the malware and the project's build with it. Stripping runs first now, and a file the project needs is cleaned and kept, never deleted. Reported and fixed by <a href="https://github.com/phoenixdahdev">@phoenixdahdev</a>. <a href="https://github.com/nexlabz/snare/pull/39">#39</a></li>
+        <li class="crit"><strong><code>.vscode/tasks.json</code> was deleted whole</strong>, losing honest build tasks along with the injected <code>folderOpen</code> one. Only the malicious task goes now. <a href="https://github.com/nexlabz/snare/pull/39">#39</a></li>
+        <li class="crit"><strong>A payload on a line of its own was never removed.</strong> Both cleaners keyed on the one-line signature. The new rule is gated narrowly — long, minified in shape, a hard campaign marker <em>and</em> obfuscated code — because dropping a whole line on a weaker signal is itself destructive. <a href="https://github.com/nexlabz/snare/pull/39">#39</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Fixed — detection and coverage</h3>
       <ul class="rel-list">
-        <li><strong>Worm artifacts and fake assets are now found by filename and magic bytes</strong> during remediation, not only during scanning: <code>scan</code> reported them and <code>fix</code> walked straight past. <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></li>
-        <li><strong>npm's own <code>lib/cli.js</code> is checked.</strong> A live host was found with ~1.4MB appended to it after 200 spaces, so every <code>npm</code> invocation ran the loader — <code>--ignore-scripts</code> does not help, because it is the package manager itself and not a package script. New campaign <code>A8-4893-2</code>, with two C2 addresses and a socket.io RAT held by a crontab <code><a href="https://github.com/reboot">@reboot</a></code> line. <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></li>
-        <li>The doctor fixture path is normalised, so the npm check no longer failed on macOS while passing on Linux — the suite reported "detection is broken" for a detector that was working correctly. <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></li>
+        <li><strong>Worm artifacts and fake assets are now found by filename and magic bytes</strong> during remediation, not only during scanning: <code>scan</code> reported them and <code>fix</code> walked straight past. <a href="https://github.com/nexlabz/snare/pull/39">#39</a></li>
+        <li><strong>npm's own <code>lib/cli.js</code> is checked.</strong> A live host was found with ~1.4MB appended to it after 200 spaces, so every <code>npm</code> invocation ran the loader — <code>--ignore-scripts</code> does not help, because it is the package manager itself and not a package script. New campaign <code>A8-4893-2</code>, with two C2 addresses and a socket.io RAT held by a crontab <code><a href="https://github.com/reboot">@reboot</a></code> line. <a href="https://github.com/nexlabz/snare/pull/39">#39</a></li>
+        <li>The doctor fixture path is normalised, so the npm check no longer failed on macOS while passing on Linux — the suite reported "detection is broken" for a detector that was working correctly. <a href="https://github.com/nexlabz/snare/pull/39">#39</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Fixed — contribution and platform</h3>
       <ul class="rel-list">
-        <li><strong>No pull request from a fork could ever pass CI.</strong> <code>ci.yml</code> passed <code>github.head_ref</code> to the reusable workflow, which then tried to check that ref out of this repository — a fork's branch does not exist here, so checkout failed three times before a single check ran. The first outside contribution hit it, and the failure looked like the contributor's fault rather than ours. It uses <code>refs/pull/N/head</code> now. <a href="https://github.com/AviOfLagos/snare/pull/40">#40</a></li>
-        <li><strong>Windows <code>guard install</code> failed with no explanation.</strong> <code>schtasks.exe</code> needs a Windows path and was handed an MSYS one, and every error was discarded. It now converts the path, prints the real error, and falls back to a Startup entry that needs no administrator rights. <a href="https://github.com/AviOfLagos/snare/pull/32">#32</a></li>
-        <li>snare flagged its own plugin manifest and skill, which quote the malware's keywords because they describe it. <a href="https://github.com/AviOfLagos/snare/pull/38">#38</a></li>
+        <li><strong>No pull request from a fork could ever pass CI.</strong> <code>ci.yml</code> passed <code>github.head_ref</code> to the reusable workflow, which then tried to check that ref out of this repository — a fork's branch does not exist here, so checkout failed three times before a single check ran. The first outside contribution hit it, and the failure looked like the contributor's fault rather than ours. It uses <code>refs/pull/N/head</code> now. <a href="https://github.com/nexlabz/snare/pull/40">#40</a></li>
+        <li><strong>Windows <code>guard install</code> failed with no explanation.</strong> <code>schtasks.exe</code> needs a Windows path and was handed an MSYS one, and every error was discarded. It now converts the path, prints the real error, and falls back to a Startup entry that needs no administrator rights. <a href="https://github.com/nexlabz/snare/pull/32">#32</a></li>
+        <li>snare flagged its own plugin manifest and skill, which quote the malware's keywords because they describe it. <a href="https://github.com/nexlabz/snare/pull/38">#38</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Added</h3>
       <ul class="rel-list">
-        <li><strong><code>snare respond</code></strong> — one guided clean-up instead of nine commands, in the order that actually works: rotate credentials, clean the machine you push from, then the repositories, then tell your collaborators. Resumable, asks before every action, refuses to run unattended. <a href="https://github.com/AviOfLagos/snare/pull/33">#33, #34</a></li>
-        <li><strong>A passive update notice.</strong> Every command now says, at most once a day and in one line, when the installation is behind. It never blocks — the check is cached and refreshed off the command path — sends nothing, and is off with <code>SNARE_NO_UPDATE_CHECK=1</code>. The people who most need the fixes are the ones who cloned once and never thought about it again. <a href="https://github.com/AviOfLagos/snare/pull/41">#41</a></li>
-        <li><strong>snare ships as a Claude Code plugin</strong>, so a coding agent can find and run it. <a href="https://github.com/AviOfLagos/snare/pull/38">#38</a></li>
-        <li>An incident-response walkthrough on the site, and a copy-paste prompt for people who would rather have an AI assistant do the work — written to forbid the assistant from running anything destructive without asking. <a href="https://github.com/AviOfLagos/snare/pull/36">#36</a></li>
+        <li><strong><code>snare respond</code></strong> — one guided clean-up instead of nine commands, in the order that actually works: rotate credentials, clean the machine you push from, then the repositories, then tell your collaborators. Resumable, asks before every action, refuses to run unattended. <a href="https://github.com/nexlabz/snare/pull/33">#33, #34</a></li>
+        <li><strong>A passive update notice.</strong> Every command now says, at most once a day and in one line, when the installation is behind. It never blocks — the check is cached and refreshed off the command path — sends nothing, and is off with <code>SNARE_NO_UPDATE_CHECK=1</code>. The people who most need the fixes are the ones who cloned once and never thought about it again. <a href="https://github.com/nexlabz/snare/pull/41">#41</a></li>
+        <li><strong>snare ships as a Claude Code plugin</strong>, so a coding agent can find and run it. <a href="https://github.com/nexlabz/snare/pull/38">#38</a></li>
+        <li>An incident-response walkthrough on the site, and a copy-paste prompt for people who would rather have an AI assistant do the work — written to forbid the assistant from running anything destructive without asking. <a href="https://github.com/nexlabz/snare/pull/36">#36</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Changed</h3>
       <ul class="rel-list">
-        <li>Post-scan guidance leads with rotating credentials and cleaning your machine, not with <code>snare fix</code>. Cleaning repositories first is wasted work while the machine that pushes to them is still infected. <a href="https://github.com/AviOfLagos/snare/pull/31">#31</a></li>
-        <li>The notify templates lead with rotation too, and carry the full list including the clipboard and the Actions workflow that keeps exfiltrating after the dropper is gone. <a href="https://github.com/AviOfLagos/snare/pull/32">#32</a></li>
-        <li><code>snare version</code> no longer runs a live fetch to decide whether to nudge; a one-line command took about five seconds on a slow link. <a href="https://github.com/AviOfLagos/snare/pull/41">#41</a></li>
-        <li>The site is a multi-page field guide with corrected document semantics, a crawler policy naming 29 search and AI crawlers, <code>llms.txt</code>, and structured data on every page. <a href="https://github.com/AviOfLagos/snare/pull/33">#33, #35, #37</a></li>
+        <li>Post-scan guidance leads with rotating credentials and cleaning your machine, not with <code>snare fix</code>. Cleaning repositories first is wasted work while the machine that pushes to them is still infected. <a href="https://github.com/nexlabz/snare/pull/31">#31</a></li>
+        <li>The notify templates lead with rotation too, and carry the full list including the clipboard and the Actions workflow that keeps exfiltrating after the dropper is gone. <a href="https://github.com/nexlabz/snare/pull/32">#32</a></li>
+        <li><code>snare version</code> no longer runs a live fetch to decide whether to nudge; a one-line command took about five seconds on a slow link. <a href="https://github.com/nexlabz/snare/pull/41">#41</a></li>
+        <li>The site is a multi-page field guide with corrected document semantics, a crawler policy naming 29 search and AI crawlers, <code>llms.txt</code>, and structured data on every page. <a href="https://github.com/nexlabz/snare/pull/33">#33, #35, #37</a></li>
       </ul>
     </div>
     <div class="rel-group">
@@ -395,46 +403,46 @@ snare update && snare selftest</pre></div></div>
     <div class="rel-group">
       <h3 class="crit">Fixed — false clean results</h3>
       <ul class="rel-list">
-        <li class="crit"><strong>The working-tree scan never ran.</strong> <code>"${EXCL[@]}"</code> on an empty array is fatal under <code>set -u</code> on bash 3.2, which is what macOS ships. The substitution died, the output came back empty, and the <code>else</code> branch printed <code>clean</code>. Only snare's own repository populated that array, so it was the only repository section 1 ever actually scanned. <a href="https://github.com/AviOfLagos/snare/pull/2">#2, #3</a></li>
-        <li class="crit"><strong>The API scan never looked at build configs.</strong> <code>postcss.config.<em></code> and <code>next.config.</em></code> were never fetched and the hidden-payload heuristic was never applied, so one of the two execution routes documented in the README could not be detected over the API. A real infection survived a clean 127-repository sweep this way. <a href="https://github.com/AviOfLagos/snare/pull/2">#2, #3</a></li>
-        <li class="crit"><strong>The heuristic keyed on raw line length.</strong> <code>length &gt; 1500</code> missed a 664-char payload. The structural signature — code, a run of 50+ whitespace, then more code — is now the primary test and catches a payload of any length. <a href="https://github.com/AviOfLagos/snare/pull/2">#2, #3</a></li>
-        <li class="crit"><strong><code>fix --purge-history</code> could force-push while removing nothing.</strong> The blob callback only rewrote blobs containing a hardcoded marker, and the completeness check grepped for one of those same markers. On an obfuscated variant it stripped nothing, verified nothing, reported success, and pushed. <a href="https://github.com/AviOfLagos/snare/pull/2">#2, #3</a></li>
-        <li class="crit"><strong>Missing <code>xxd</code> made every genuine font look like a payload.</strong> <code>xxd</code> ships with vim and is absent from minimal Linux images and some Git Bash installs. When it was missing the magic-byte read returned empty and fell through to the failure case — and in the pre-push hook that blocked every push from any repository containing fonts. Now uses POSIX <code>od</code>, and an unreadable magic counts as <em>cannot tell</em> rather than an accusation. <a href="https://github.com/AviOfLagos/snare/pull/29">#29</a></li>
+        <li class="crit"><strong>The working-tree scan never ran.</strong> <code>"${EXCL[@]}"</code> on an empty array is fatal under <code>set -u</code> on bash 3.2, which is what macOS ships. The substitution died, the output came back empty, and the <code>else</code> branch printed <code>clean</code>. Only snare's own repository populated that array, so it was the only repository section 1 ever actually scanned. <a href="https://github.com/nexlabz/snare/pull/2">#2, #3</a></li>
+        <li class="crit"><strong>The API scan never looked at build configs.</strong> <code>postcss.config.<em></code> and <code>next.config.</em></code> were never fetched and the hidden-payload heuristic was never applied, so one of the two execution routes documented in the README could not be detected over the API. A real infection survived a clean 127-repository sweep this way. <a href="https://github.com/nexlabz/snare/pull/2">#2, #3</a></li>
+        <li class="crit"><strong>The heuristic keyed on raw line length.</strong> <code>length &gt; 1500</code> missed a 664-char payload. The structural signature — code, a run of 50+ whitespace, then more code — is now the primary test and catches a payload of any length. <a href="https://github.com/nexlabz/snare/pull/2">#2, #3</a></li>
+        <li class="crit"><strong><code>fix --purge-history</code> could force-push while removing nothing.</strong> The blob callback only rewrote blobs containing a hardcoded marker, and the completeness check grepped for one of those same markers. On an obfuscated variant it stripped nothing, verified nothing, reported success, and pushed. <a href="https://github.com/nexlabz/snare/pull/2">#2, #3</a></li>
+        <li class="crit"><strong>Missing <code>xxd</code> made every genuine font look like a payload.</strong> <code>xxd</code> ships with vim and is absent from minimal Linux images and some Git Bash installs. When it was missing the magic-byte read returned empty and fell through to the failure case — and in the pre-push hook that blocked every push from any repository containing fonts. Now uses POSIX <code>od</code>, and an unreadable magic counts as <em>cannot tell</em> rather than an accusation. <a href="https://github.com/nexlabz/snare/pull/29">#29</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Fixed — evasion and detection</h3>
       <ul class="rel-list">
-        <li><strong>The guard could be evaded by putting <code>snare</code> in a process argv.</strong> It skipped any process whose command line contained the substring <code>snare</code> anywhere, so a payload hid from it by being named <code>node /tmp/snare-helper.js</code>. Matching is now against the real install path. <a href="https://github.com/AviOfLagos/snare/pull/17">#17</a></li>
-        <li><strong>Every legitimate <code>.ttf</code> was flagged.</strong> The TrueType magic case compared against <code>$'\x00\x01\x00\x00'</code>, but bash cannot hold NUL bytes, so that branch could never match. <a href="https://github.com/AviOfLagos/snare/pull/2">#2, #3</a></li>
-        <li><strong>Long minified files were reported as findings.</strong> Raw line length is now an informational note, not a finding — a scanner nobody reads protects nobody. <a href="https://github.com/AviOfLagos/snare/pull/10">#10</a></li>
-        <li>Actions workflow persistence is now detected by content (whole-secret-context dumps, known exfiltration endpoints), not just by filename. <a href="https://github.com/AviOfLagos/snare/pull/22">#22, #23</a></li>
+        <li><strong>The guard could be evaded by putting <code>snare</code> in a process argv.</strong> It skipped any process whose command line contained the substring <code>snare</code> anywhere, so a payload hid from it by being named <code>node /tmp/snare-helper.js</code>. Matching is now against the real install path. <a href="https://github.com/nexlabz/snare/pull/17">#17</a></li>
+        <li><strong>Every legitimate <code>.ttf</code> was flagged.</strong> The TrueType magic case compared against <code>$'\x00\x01\x00\x00'</code>, but bash cannot hold NUL bytes, so that branch could never match. <a href="https://github.com/nexlabz/snare/pull/2">#2, #3</a></li>
+        <li><strong>Long minified files were reported as findings.</strong> Raw line length is now an informational note, not a finding — a scanner nobody reads protects nobody. <a href="https://github.com/nexlabz/snare/pull/10">#10</a></li>
+        <li>Actions workflow persistence is now detected by content (whole-secret-context dumps, known exfiltration endpoints), not just by filename. <a href="https://github.com/nexlabz/snare/pull/22">#22, #23</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Fixed — platform and upgrade</h3>
       <ul class="rel-list">
-        <li><strong>Install was broken on Windows Git Bash.</strong> The installer fell back to copying when <code>ln -s</code> failed, and a copy cannot resolve its own library directory. It now writes a launcher stub instead, and verifies the symlink actually exists rather than trusting <code>ln</code>'s exit status. <a href="https://github.com/AviOfLagos/snare/pull/26">#26</a></li>
-        <li><strong>An old shell shield kept a silent bypass.</strong> An early version gated on <code>[ -t 1 ]</code>, so <code>npm install &gt; log 2&gt;&amp;1</code> skipped the check entirely — and <code>shield install</code> refused to touch an existing block. It now detects an outdated block and refreshes it in place. <a href="https://github.com/AviOfLagos/snare/pull/27">#27</a></li>
-        <li><strong>Hooks written before the version marker became invisible</strong> to <code>status</code>, <code>uninstall</code> and <code>install</code>. Legacy hooks are now recognised and upgraded in place. <a href="https://github.com/AviOfLagos/snare/pull/27">#27</a></li>
-        <li><code>snare update</code> now reports what it could <em>not</em> update for you — a running guard, a stale shield, an old hook — instead of leaving stale copies running. <a href="https://github.com/AviOfLagos/snare/pull/27">#27</a></li>
-        <li><code>mktemp</code> templates are GNU-safe; without <code>XXXXXX</code> the scanner recorded no findings at all on Linux. <a href="https://github.com/AviOfLagos/snare/pull/16">#16</a></li>
-        <li><code>shasum</code> is no longer assumed present; without it every repository collided onto a single baseline key. <a href="https://github.com/AviOfLagos/snare/pull/29">#29</a></li>
-        <li>Missing library files now produce one actionable message instead of thirteen cryptic errors. <code>SNARE_ROOT</code> overrides the location. <a href="https://github.com/AviOfLagos/snare/pull/26">#26</a></li>
+        <li><strong>Install was broken on Windows Git Bash.</strong> The installer fell back to copying when <code>ln -s</code> failed, and a copy cannot resolve its own library directory. It now writes a launcher stub instead, and verifies the symlink actually exists rather than trusting <code>ln</code>'s exit status. <a href="https://github.com/nexlabz/snare/pull/26">#26</a></li>
+        <li><strong>An old shell shield kept a silent bypass.</strong> An early version gated on <code>[ -t 1 ]</code>, so <code>npm install &gt; log 2&gt;&amp;1</code> skipped the check entirely — and <code>shield install</code> refused to touch an existing block. It now detects an outdated block and refreshes it in place. <a href="https://github.com/nexlabz/snare/pull/27">#27</a></li>
+        <li><strong>Hooks written before the version marker became invisible</strong> to <code>status</code>, <code>uninstall</code> and <code>install</code>. Legacy hooks are now recognised and upgraded in place. <a href="https://github.com/nexlabz/snare/pull/27">#27</a></li>
+        <li><code>snare update</code> now reports what it could <em>not</em> update for you — a running guard, a stale shield, an old hook — instead of leaving stale copies running. <a href="https://github.com/nexlabz/snare/pull/27">#27</a></li>
+        <li><code>mktemp</code> templates are GNU-safe; without <code>XXXXXX</code> the scanner recorded no findings at all on Linux. <a href="https://github.com/nexlabz/snare/pull/16">#16</a></li>
+        <li><code>shasum</code> is no longer assumed present; without it every repository collided onto a single baseline key. <a href="https://github.com/nexlabz/snare/pull/29">#29</a></li>
+        <li>Missing library files now produce one actionable message instead of thirteen cryptic errors. <code>SNARE_ROOT</code> overrides the location. <a href="https://github.com/nexlabz/snare/pull/26">#26</a></li>
       </ul>
     </div>
     <div class="rel-group">
       <h3>Added</h3>
       <ul class="rel-list">
-        <li><code>snare selftest</code> — asserts known-bad samples are flagged and known-good ones are not, including with <code>xxd</code> and <code>shasum</code> unavailable. Ten checks. <a href="https://github.com/AviOfLagos/snare/pull/5">#5, #29</a></li>
-        <li><code>snare update</code> — self-update, fast-forward only, refuses to discard local edits without <code>--force</code>. <a href="https://github.com/AviOfLagos/snare/pull/4">#4</a></li>
-        <li><code>snare shield</code> — scans before <code>npm</code>/<code>pnpm</code>/<code>yarn</code>/<code>bun</code>/<code>npx</code> and <code>git clone</code> can execute anything. <a href="https://github.com/AviOfLagos/snare/pull/18">#18</a></li>
-        <li><code>snare hook</code> — pre-push (and optional pre-commit) block, the only feature that prevents spread rather than detecting it afterwards. <a href="https://github.com/AviOfLagos/snare/pull/9">#9</a></li>
-        <li><code>snare ci</code> — writes a GitHub Actions workflow; a required status check is the closest thing to rejecting a push, since GitHub.com has no pre-receive hooks. <a href="https://github.com/AviOfLagos/snare/pull/15">#15</a></li>
-        <li><code>snare rotate</code> — what to revoke and in what order, plus a GitHub audit for the repositories and secret-exporting workflows this family leaves behind. npm write tokens first, because a stolen one is how a single machine becomes a supply-chain event. <a href="https://github.com/AviOfLagos/snare/pull/22">#22</a></li>
-        <li><code>snare report</code> / <code>snare schedule</code> — timestamped reports, <code>--json</code>, meaningful exit codes, and an opt-in timer. No email, deliberately. <a href="https://github.com/AviOfLagos/snare/pull/7">#7</a></li>
-        <li><code>snare baseline</code> — accept known findings so scheduled scans surface only what is new. Accepting a finding silences it; it does not make it safe. <a href="https://github.com/AviOfLagos/snare/pull/8">#8</a></li>
-        <li><code>snare fix --all</code> — dry run by default, and the confirmation requires typing the repository count. <a href="https://github.com/AviOfLagos/snare/pull/6">#6</a></li>
+        <li><code>snare selftest</code> — asserts known-bad samples are flagged and known-good ones are not, including with <code>xxd</code> and <code>shasum</code> unavailable. Ten checks. <a href="https://github.com/nexlabz/snare/pull/5">#5, #29</a></li>
+        <li><code>snare update</code> — self-update, fast-forward only, refuses to discard local edits without <code>--force</code>. <a href="https://github.com/nexlabz/snare/pull/4">#4</a></li>
+        <li><code>snare shield</code> — scans before <code>npm</code>/<code>pnpm</code>/<code>yarn</code>/<code>bun</code>/<code>npx</code> and <code>git clone</code> can execute anything. <a href="https://github.com/nexlabz/snare/pull/18">#18</a></li>
+        <li><code>snare hook</code> — pre-push (and optional pre-commit) block, the only feature that prevents spread rather than detecting it afterwards. <a href="https://github.com/nexlabz/snare/pull/9">#9</a></li>
+        <li><code>snare ci</code> — writes a GitHub Actions workflow; a required status check is the closest thing to rejecting a push, since GitHub.com has no pre-receive hooks. <a href="https://github.com/nexlabz/snare/pull/15">#15</a></li>
+        <li><code>snare rotate</code> — what to revoke and in what order, plus a GitHub audit for the repositories and secret-exporting workflows this family leaves behind. npm write tokens first, because a stolen one is how a single machine becomes a supply-chain event. <a href="https://github.com/nexlabz/snare/pull/22">#22</a></li>
+        <li><code>snare report</code> / <code>snare schedule</code> — timestamped reports, <code>--json</code>, meaningful exit codes, and an opt-in timer. No email, deliberately. <a href="https://github.com/nexlabz/snare/pull/7">#7</a></li>
+        <li><code>snare baseline</code> — accept known findings so scheduled scans surface only what is new. Accepting a finding silences it; it does not make it safe. <a href="https://github.com/nexlabz/snare/pull/8">#8</a></li>
+        <li><code>snare fix --all</code> — dry run by default, and the confirmation requires typing the repository count. <a href="https://github.com/nexlabz/snare/pull/6">#6</a></li>
       </ul>
     </div>
     <div class="rel-group">
@@ -462,9 +470,9 @@ snare update && snare selftest</pre></div></div>
 
   <section class="stack">
     <p class="note">Full commit history:
-    <a href="https://github.com/AviOfLagos/snare/commits/main">github.com/AviOfLagos/snare/commits/main</a>.
+    <a href="https://github.com/nexlabz/snare/commits/main">github.com/nexlabz/snare/commits/main</a>.
     These notes are generated from
-    <a href="https://github.com/AviOfLagos/snare/blob/main/CHANGELOG.md">CHANGELOG.md</a>, so this
+    <a href="https://github.com/nexlabz/snare/blob/main/CHANGELOG.md">CHANGELOG.md</a>, so this
     page cannot drift from the release it describes.</p>
   </section>
   </div>
@@ -502,7 +510,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.4.0</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.0</a> · MIT</span>
   </div>
 </footer>
 </div>
