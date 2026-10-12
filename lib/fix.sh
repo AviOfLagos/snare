@@ -69,7 +69,8 @@ def clean_tasks(data):
     # object. What it contains is decided after parsing, never before.
     if len(data) > 200000:
         return None
-    if data[:1024].lstrip()[:1] != b"{":
+    probe = data[3:] if data[:3] == b"\xef\xbb\xbf" else data
+    if probe.lstrip()[:1] != b"{":
         return None
     try:
         d = jsonc_load(data)

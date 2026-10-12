@@ -110,7 +110,10 @@ import json, re
 
 def jsonc(data):
     """JSONC -> JSON text. Comments and trailing commas out, strings intact."""
-    s = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
+    # utf-8-sig, because a UTF-8 BOM is invisible to a reader and fatal to
+    # json.loads — and a config that snare cannot read while the editor can is
+    # a bypass, not an edge case.
+    s = data.decode("utf-8-sig", "replace") if isinstance(data, bytes) else data
     out, i, n = [], 0, len(s)
     instr = esc = False
     while i < n:
@@ -138,7 +141,7 @@ def jsonc(data):
 def jsonc_load(data):
     try:
         return json.loads(data if isinstance(data, str)
-                          else data.decode("utf-8", "replace"))
+                          else data.decode("utf-8-sig", "replace"))
     except Exception:
         return json.loads(jsonc(data))
 PY

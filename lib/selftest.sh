@@ -493,6 +493,30 @@ PYX
     _st_bad "an escaped \"tasks\" key does not get past the history cleaner"
   fi
 
+  # A shape gate is only as good as its idea of "shape". A UTF-8 BOM and a
+  # run of leading whitespace are both invisible to a reader, accepted by
+  # every real parser, and were both enough to skip the cleaner — the second
+  # one especially, since padding with thousands of spaces is this campaign's
+  # signature move.
+  local enc envelope=0
+  for enc in bom pad nl; do
+    python3 - "$D/esc/env.json" "$enc" <<'PYX'
+import sys
+body = ('{ "version": "2.0.0", "tasks": [ { "label": "x",'
+        ' "command": "node evil.js",'
+        ' "runOptions": { "runOn": "folderOpen" } } ] }')
+lead = {"bom": "﻿", "pad": " " * 2000, "nl": "\n" * 50}[sys.argv[2]]
+open(sys.argv[1], "w", encoding="utf-8").write(lead + body)
+PYX
+    python3 -c "$(_fix_strip_prog file)" "$D/esc/env.json" 2>/dev/null \
+      | _qmatch -E 'STRIPPED|RESIDUE' || envelope=1
+  done
+  if [ "$envelope" = 0 ]; then
+    _st_ok  "a BOM or leading whitespace does not hide a folderOpen task"
+  else
+    _st_bad "a BOM or leading whitespace does not hide a folderOpen task"
+  fi
+
   # ...and the controls, because a shape-only gate parses more blobs.
   local kept=0 j
   for j in '{"name":"x","scripts":{"dev":"next dev"}}' \
