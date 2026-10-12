@@ -74,7 +74,15 @@ and reported no findings.
   finding of its own — VS Code is more tolerant than any parser snare ships,
   so silence is the wrong default.
 - **The history cleaner had its own byte-level pre-filter** in front of the
-  same parse, with the same result for `--purge-history`.
+  same parse, with the same result for `--purge-history`. Four review passes
+  found four variants of that one gate — an escaped `"\u0074asks"` key, a
+  UTF-8 BOM, 2,000 leading spaces, and a UTF-16 file that VS Code reads and
+  runs while the same bytes decode to mojibake as UTF-8. The lesson is the
+  gate, not the variants: it now tests nothing but shape, on text decoded the
+  way an editor decodes it, and every verdict is taken after parsing. All four
+  have regression tests, as do the controls — `package.json`, `tsconfig.json`,
+  an honest `tasks.json` and a PNG are asserted untouched, because a
+  shape-only gate parses more blobs than a byte-matched one.
 
 ### Fixed — destructive behaviour
 

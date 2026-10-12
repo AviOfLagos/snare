@@ -108,12 +108,30 @@ snare_jsonc_py(){
   cat <<'PY'
 import json, re
 
+# A byte-order mark picks the codec, the way an editor does it. VS Code reads
+# and runs a UTF-16 tasks.json; decoded as UTF-8 the same bytes are mojibake
+# and every check downstream sees nothing in it. A config snare cannot read
+# while the editor can is a bypass, not an edge case — and the same is true of
+# a plain UTF-8 BOM, which is invisible to a reader and fatal to json.loads.
+_BOMS = ((b"\x00\x00\xfe\xff", "utf-32"), (b"\xff\xfe\x00\x00", "utf-32"),
+         (b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"),
+         (b"\xfe\xff", "utf-16"))
+
+def to_text(data):
+    """Bytes -> the text an editor would read, BOM honoured and removed."""
+    if not isinstance(data, bytes):
+        return data
+    for bom, enc in _BOMS:
+        if data.startswith(bom):
+            try:
+                return data.decode(enc)
+            except Exception:
+                break
+    return data.decode("utf-8-sig", "replace")
+
 def jsonc(data):
     """JSONC -> JSON text. Comments and trailing commas out, strings intact."""
-    # utf-8-sig, because a UTF-8 BOM is invisible to a reader and fatal to
-    # json.loads — and a config that snare cannot read while the editor can is
-    # a bypass, not an edge case.
-    s = data.decode("utf-8-sig", "replace") if isinstance(data, bytes) else data
+    s = to_text(data)
     out, i, n = [], 0, len(s)
     instr = esc = False
     while i < n:
@@ -139,11 +157,11 @@ def jsonc(data):
     return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
 
 def jsonc_load(data):
+    text = to_text(data)
     try:
-        return json.loads(data if isinstance(data, str)
-                          else data.decode("utf-8-sig", "replace"))
+        return json.loads(text)
     except Exception:
-        return json.loads(jsonc(data))
+        return json.loads(jsonc(text))
 PY
 }
 

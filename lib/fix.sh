@@ -69,8 +69,11 @@ def clean_tasks(data):
     # object. What it contains is decided after parsing, never before.
     if len(data) > 200000:
         return None
-    probe = data[3:] if data[:3] == b"\xef\xbb\xbf" else data
-    if probe.lstrip()[:1] != b"{":
+    # Decode the way an editor would before deciding anything, so the shape
+    # test cannot be dodged with an encoding. Three review passes found three
+    # variants of this one gate — an escaped key, a BOM, 2,000 leading
+    # spaces — so it tests nothing but shape, on normalised text.
+    if to_text(data).lstrip()[:1] != "{":
         return None
     try:
         d = jsonc_load(data)

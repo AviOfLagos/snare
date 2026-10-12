@@ -499,22 +499,30 @@ PYX
   # one especially, since padding with thousands of spaces is this campaign's
   # signature move.
   local enc envelope=0
-  for enc in bom pad nl; do
+  for enc in bom pad nl utf16 utf16be; do
     python3 - "$D/esc/env.json" "$enc" <<'PYX'
 import sys
 body = ('{ "version": "2.0.0", "tasks": [ { "label": "x",'
         ' "command": "node evil.js",'
         ' "runOptions": { "runOn": "folderOpen" } } ] }')
-lead = {"bom": "﻿", "pad": " " * 2000, "nl": "\n" * 50}[sys.argv[2]]
-open(sys.argv[1], "w", encoding="utf-8").write(lead + body)
+enc = sys.argv[2]
+if enc.startswith("utf16"):
+    # VS Code reads and runs a UTF-16 tasks.json. Decoded as UTF-8 the
+    # same bytes are mojibake and every check downstream sees nothing.
+    raw = (body.encode("utf-16") if enc == "utf16"
+           else b"\xfe\xff" + body.encode("utf-16-be"))
+    open(sys.argv[1], "wb").write(raw)
+else:
+    lead = {"bom": "﻿", "pad": " " * 2000, "nl": "\n" * 50}[enc]
+    open(sys.argv[1], "w", encoding="utf-8").write(lead + body)
 PYX
     python3 -c "$(_fix_strip_prog file)" "$D/esc/env.json" 2>/dev/null \
       | _qmatch -E 'STRIPPED|RESIDUE' || envelope=1
   done
   if [ "$envelope" = 0 ]; then
-    _st_ok  "a BOM or leading whitespace does not hide a folderOpen task"
+    _st_ok  "a BOM, 2000 spaces or UTF-16 does not hide a folderOpen task"
   else
-    _st_bad "a BOM or leading whitespace does not hide a folderOpen task"
+    _st_bad "a BOM, 2000 spaces or UTF-16 does not hide a folderOpen task"
   fi
 
   # ...and the controls, because a shape-only gate parses more blobs.
