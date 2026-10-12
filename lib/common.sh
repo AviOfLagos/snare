@@ -95,6 +95,87 @@ snare_grep_tree(){
   esac
 }
 
+# Emits a python helper used wherever snare reads an editor or agent config.
+# Two reasons it exists, both of them bypasses that were measured:
+#
+# 1. Those files are JSONC: VS Code reads
+# tasks.json as JSONC, so real files carry // comments, /* */ blocks and a
+# trailing comma before the closing bracket. json.loads rejects all three, and
+# the caller read "cannot parse" as "nothing legitimate in it" and deleted the
+# file — so a project with honest build tasks plus one injected folderOpen task
+# lost every task it had. Reported by @SamuelOshin (#44).
+snare_jsonc_py(){
+  cat <<'PY'
+import json, re
+
+# A byte-order mark picks the codec, the way an editor does it. VS Code reads
+# and runs a UTF-16 tasks.json; decoded as UTF-8 the same bytes are mojibake
+# and every check downstream sees nothing in it. A config snare cannot read
+# while the editor can is a bypass, not an edge case — and the same is true of
+# a plain UTF-8 BOM, which is invisible to a reader and fatal to json.loads.
+_BOMS = ((b"\x00\x00\xfe\xff", "utf-32"), (b"\xff\xfe\x00\x00", "utf-32"),
+         (b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"),
+         (b"\xfe\xff", "utf-16"))
+
+def to_text(data):
+    """Bytes -> the text an editor would read, BOM honoured and removed."""
+    if not isinstance(data, bytes):
+        return data
+    for bom, enc in _BOMS:
+        if data.startswith(bom):
+            try:
+                return data.decode(enc)
+            except Exception:
+                break
+    return data.decode("utf-8-sig", "replace")
+
+def jsonc(data):
+    """JSONC -> JSON text. Comments and trailing commas out, strings intact."""
+    s = to_text(data)
+    out, i, n = [], 0, len(s)
+    instr = esc = False
+    while i < n:
+        c = s[i]
+        if instr:
+            out.append(c)
+            if esc:         esc = False
+            elif c == chr(92): esc = True
+            elif c == '"':  instr = False
+            i += 1; continue
+        if c == '"':
+            instr = True; out.append(c); i += 1; continue
+        if c == "/" and i + 1 < n and s[i + 1] == "/":
+            while i < n and s[i] != chr(10):
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and s[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (s[i] == "*" and s[i + 1] == "/"):
+                i += 1
+            i += 2; continue
+        # Trailing commas are dropped HERE, inside the pass that knows where
+        # the strings are. Doing it afterwards with a regex rewrote "a, }"
+        # inside a label to "a }" — the verdict was unaffected, but a cleaner
+        # that quietly edits strings it was only meant to read is its own bug.
+        if c in "}]":
+            k = len(out) - 1
+            while k >= 0 and out[k] in " \t\r\n":
+                k -= 1
+            if k >= 0 and out[k] == ",":
+                del out[k:]
+            out.append(c); i += 1; continue
+        out.append(c); i += 1
+    return "".join(out)
+
+def jsonc_load(data):
+    text = to_text(data)
+    try:
+        return json.loads(text)
+    except Exception:
+        return json.loads(jsonc(text))
+PY
+}
+
 need(){ command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installed"; }
 
 # Auth is ALWAYS the caller's own — snare never ships or stores a token.
@@ -173,6 +254,12 @@ magic4(){ head -c 4 "$1" 2>/dev/null | od -An -v -tx1 2>/dev/null | tr -d ' \n';
 # "Undeterminable" deliberately counts as fine: refusing to guess beats
 # accusing a user's assets because a tool was missing.
 is_font(){
+  # An empty file is not a font. `[ -z "$m" ] && return 0` used to say it was,
+  # because magic4 returns nothing for a file with no bytes to read — so a
+  # dropper committed as a 0-byte public/fonts/fa-solid-500.woff2 was reported
+  # as a legitimate font and `fix` left it in place, along with the
+  # folderOpen task that ran it. Reported by @SamuelOshin (#44).
+  [ -s "$1" ] || return 1
   local m; m="$(magic4 "$1")"
   [ -z "$m" ] && return 0
   case "$m" in

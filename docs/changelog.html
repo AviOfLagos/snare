@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.2.0">v1.2.0</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.4.0">v1.4.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -105,12 +105,180 @@ snare update && snare selftest</pre></div></div>
     </div>
   </section>
 
+<section class="stack" id="v1-4-0">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.4.0</h2>
+      <span class="rel-date">2026-10-12</span>
+        <span class="tag now">Current</span>
+    </div>
+    <p class="lede">Three people found this campaign on their own machines and wrote up what they saw: [<a href="https://github.com/kleenpulse">@kleenpulse</a>](https://github.com/kleenpulse) <a href="https://github.com/AviOfLagos/snare/pull/47">#47</a>, [<a href="https://github.com/ibraheembello">@ibraheembello</a>](https://github.com/ibraheembello) <a href="https://github.com/AviOfLagos/snare/pull/46">#46</a> and [<a href="https://github.com/SamuelOshin">@SamuelOshin</a>](https://github.com/SamuelOshin) <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>. Every item below is a sample or a bug they reported, with the reproduction and the measurement taken here before and after.</p>
+    <div class="rel-group">
+      <h3 class="crit">Fixed — false clean results</h3>
+      <ul class="rel-list">
+        <li class="crit"><strong>The run scripts, not the install hooks.</strong> <code>package.json</code> keeps every script it had and gains <code>"dev": "node api.js &amp;&amp; next dev"</code> (and the same for <code>build</code> and <code>start</code>), so nothing has to be installed for the loader to run and <code>--ignore-scripts</code> is irrelevant. Section 2 only ever read <code>preinstall</code>/<code>postinstall</code>/<code>prepare</code>. The shape on its own is an ordinary build step — <code>node scripts/build.js &amp;&amp; tsc</code> is honest work — so the check fires only when the file being run is itself obfuscated: one line over 5,000 characters, a <code>_0x</code> identifier array, or an assignment to <code>global[..]</code>.</li>
+        <li class="crit"><strong>The AI agent's own config is the persistence.</strong> A <code>SessionStart</code> hook in <code>.claude/settings.json</code> runs a dropper every time a session opens. It survives removing the package that delivered it, npm never sees it, and the <code>.claude/setup.mjs</code> and <code>.vscode/setup.mjs</code> copies re-create each other, so removing one directory fixes nothing. Hooks are a real feature — snare ships a plugin itself — so the command decides: a <code>prettier</code> hook is a note, <code>node .vscode/setup.mjs</code> is a finding.</li>
+        <li class="crit"><strong>The obfuscated loader set <code>global['!']</code>, not <code>global.i</code>.</strong> The marker list and the history cleaner both keyed on <code>global\.i</code>, so the obfuscated half of this campaign matched nothing and <code>--purge-history</code> rewrote nothing while reporting success. The campaign tags <code>4738-2</code> and <code>2503-2</code>, the push-forging artefacts (<code>temp_auto_push.bat</code>, <code>temp_interactive_push.bat</code>, <code>branch_structure.json</code> — added to <code>.gitignore</code> so they stay out of <code>git status</code>) and the Windows clipboard stealer (<code>GetClipboardSequenceNumber</code> under a hidden <code>-EncodedCommand</code>) are IOCs now.</li>
+        <li class="crit"><strong><code>doctor</code> never looked at npm on Windows.</strong> It printed <code>no npm installation found to check</code> on every Windows host: it knew only the Unix <code>lib/node_modules</code> layout, never <code>%APPDATA%\npm\node_modules\npm</code>. That is also the copy that <em>runs</em> — the <code>npm</code> and <code>npx</code> shims prefer a global-prefix install over the one bundled in Program Files, so a single <code>npm i -g npm</code> is enough. A live infection sat there while <code>doctor</code> reported clean <a href="https://github.com/AviOfLagos/snare/pull/46">#46</a>. Size is checked first, because it needs no knowledge of the malware at all: measured 407 bytes here and 419 bytes on the reference host, against 503,857 and 1,332,948 bytes in the two reported infections.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — parser differentials</h3>
+      <ul class="rel-list">
+        <li><strong><code>.vscode/tasks.json</code> was gated on <code>grep -q folderOpen</code>.</strong> The verdict now comes from the parsed document and compares resolved strings, so the escape has nothing to hide behind.</li>
+        <li><strong>An agent config that could not be parsed was silently skipped.</strong> One <code>//</code> comment in <code>.claude/settings.json</code> made <code>json.loads</code> throw, the check exited 0, and a <code>SessionStart</code> dropper went unreported while the agent still ran it. Both files are read as JSONC, and a config nothing here can parse is a finding of its own — VS Code is more tolerant than any parser snare ships, so silence is the wrong default.</li>
+        <li><strong>The history cleaner had its own byte-level pre-filter</strong> in front of the same parse, with the same result for <code>--purge-history</code>. Four review passes found four variants of that one gate — an escaped <code>"\u0074asks"</code> key, a UTF-8 BOM, 2,000 leading spaces, and a UTF-16 file that VS Code reads and runs while the same bytes decode to mojibake as UTF-8. The lesson is the gate, not the variants: it now tests nothing but shape, on text decoded the way an editor decodes it, and every verdict is taken after parsing. All four have regression tests, as do the controls — <code>package.json</code>, <code>tsconfig.json</code>, an honest <code>tasks.json</code> and a PNG are asserted untouched, because a shape-only gate parses more blobs than a byte-matched one.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3 class="crit">Fixed — destructive behaviour</h3>
+      <ul class="rel-list">
+        <li class="crit"><strong>A 0-byte fake font was treated as a genuine font.</strong> <code>magic4</code> returns nothing for a file with no bytes to read, and <code>is_font</code> read that as "font", so a dropper committed as an empty <code>public/fonts/fa-solid-500.woff2</code> was skipped by <code>fix</code> and left in place along with the task that overwrites and runs it <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>.</li>
+        <li class="crit"><strong><code>tasks.json</code> is JSONC, and that deleted people's build tasks.</strong> Real VS Code files carry <code>//</code> comments, <code>/<em> </em>/</code> blocks and a trailing comma; <code>json.loads</code> rejects all three, and the caller read "cannot parse" as "nothing legitimate in it" and removed the file. A project with honest build tasks plus one injected <code>folderOpen</code> task lost every task it had <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>. Both cleaners now parse JSONC, and the history cleaner identifies a <code>tasks.json</code> blob by content — <code>git filter-repo</code> hands its blob callback no filename, which is why a purge rewrote payload lines but left every injected task sitting in history.</li>
+        <li class="crit"><strong><code>fix</code> invented a branch called <code>origin</code> and pushed it.</strong> <code>refs/remotes/origin/HEAD</code> short-names to plain <code>origin</code>, which passes <code>grep -v HEAD</code>; <code>${ref#origin/}</code> then leaves <code>origin</code> unchanged, so the tip-cleaning loop created a local branch of that name and force-pushed it as <code>refs/heads/origin</code> on the remote being remediated <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>.</li>
+        <li class="crit"><strong>A failed push was reported as a success.</strong> <code>git push ... | tail -2</code> discards the exit status, so a 443 timeout printed its error into the pipe while the purge reported success and the rewritten history had never left the machine <a href="https://github.com/AviOfLagos/snare/pull/44">#44</a>.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — false positives</h3>
+      <ul class="rel-list">
+        <li><strong>The whitespace heuristic fired on block comments.</strong> Measured on a real 53,740-file project: 5 findings, every one of them aligned prose inside a <code>/<em> </em>/</code> comment, where nothing after the whitespace run can execute. That project now reports clean. A line whose first non-space character is <code>*</code>, <code>//</code> or <code>#</code> is skipped.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — forged force-pushes</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Changed — being behind is now a visible risk</h3>
+      <ul class="rel-list">
+        <li><strong>A clean verdict says when it came from an outdated scanner.</strong> This is the one output that stops someone looking further, so <code>scan repo</code> now prints the commit distance and what that version could not see. Cache only — no network on that path.</li>
+        <li><strong>The notice reaches installs that are not git checkouts.</strong> The refresh returned early without a <code>.git</code> directory, so anyone who downloaded a zip or tarball was never told anything at all. The version in the remote's <code>bin/snare</code> is recorded as well, which works without a repository.</li>
+        <li><strong>The notice says what is missing, not just that something is.</strong> It named 1.1.0 forever; it now names the release that fixed the false-clean bug the running version still has.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the website could not drift, but it did</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Not fixed</h3>
+      <ul class="rel-list">
+        <li><code>--purge-history</code> still cannot remove a <em>fake font</em> from history by name: <code>git filter-repo</code>'s blob callback is given no filename, and a font-named payload has no reliable content signature. Injected <code>folderOpen</code> tasks are handled by content; for a font, remove the path explicitly: <code>git filter-repo --invert-paths --path public/fonts/&lt;file&gt;</code>.</li>
+        <li>How this family reaches a machine in the first place is still unidentified. #47 documents npm's own <code>cli.js</code> rewritten on disk, but not what put it there.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="stack" id="v1-3-4">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.3.4</h2>
+      <span class="rel-date">2026-10-02</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — <code>scan repo</code> did not finish on a real project</h3>
+      <ul class="rel-list">
+        <li><strong>The IOC set is split by whether it needs a regex engine at all.</strong> 42 of the 53 patterns are plain strings once backslash-escapes are removed — <code>global\['_t_s'\]</code> and <code>setup_bun\.js</code> look like regexes but are literals — and those go through <code>-F</code>, which is Aho-Corasick and indifferent to how many patterns there are. Only 11 genuinely need <code>-E</code>.</li>
+        <li><strong>ripgrep is used when it is installed</strong>, falling back to grep when it is not. Measured on the same tree, a literal pass over <code>node_modules</code>: BSD grep &gt;120s, ripgrep 1.6s.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Known, not fixed</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="stack" id="v1-3-3">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.3.3</h2>
+      <span class="rel-date">2026-10-02</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the guard cost about a third of a core to do nothing</h3>
+      <ul class="rel-list">
+        <li><strong>The network scan walked every open socket in bash</strong>, testing each C2 IP with <code>case</code>. That is 1.75s a call. A single <code>grep -F -f</code> pass does the same filtering in C and normally matches nothing, so the loop body — and its per-connection <code>snare_net_pid</code> / <code>snare_ps_cmd</code> forks — is never entered.</li>
+        <li><strong>The process scan read every process on the machine.</strong> Only interpreters can execute an inline payload, which the <code>case</code> already enforced exactly, so a <code>grep -E</code> pre-filter now drops the other few hundred before bash sees one.</li>
+        <li><strong>The C2 IP list was re-resolved inside the per-connection loop</strong>, costing a fork for every open socket on each scan.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Changed — the two checks now tick at different rates</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Also</h3>
+      <ul class="rel-list">
+        <li><code>91.218.183.174</code> added to the kill pattern, not just the scan IOCs. The guard's cmdline pattern is separate from <code>iocs.txt</code> and had been missed.</li>
+        <li>Verified end to end rather than by inspection: the live daemon detected and SIGKILLed <code>node -e "global['_t_u']=..."</code> within 3 seconds, with evidence written, after each change.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="stack" id="v1-3-2">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.3.2</h2>
+      <span class="rel-date">2026-10-02</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — false positives, measured on real repos</h3>
+      <ul class="rel-list">
+        <li><strong><code>_H2</code>, <code>_t_s</code>, <code>_t_u</code> were matched bare.</strong> <code>bwip-js</code> names generated variables <code>_H0</code>..<code>_H4</code> and <code><a href="https://github.com/edge-runtime">@edge-runtime</a>/primitives</code> contains <code>PAUSED_H2_UPGRADE</code>, so any project with those dependencies lit up. The loader always sets these as globals, so they are now anchored (<code>global['_H2']</code>, <code>_global._H2</code>, …). Checked against the plaintext sample: the anchored forms hit it exactly as the bare token did, so no detection was traded away.</li>
+        <li><strong><code>changeCount</code> was matched bare.</strong> <code>NSPasteboard.changeCount</code> is the real clipboard-stealer signal, but the bare word matched vitest's diff printer (<code>changeCounts.a</code>) and fired on anything with a test runner. Now anchored to the pasteboard API. <code>generalPasteboard</code> and <code>NSPasteboard</code> were added on their own — Apple-specific, near-zero false positive — so a stealer dropped as a plain <code>.js</code> with no <code>osascript</code> on the line is caught, which it was not before. Net: fewer false positives and better coverage.</li>
+        <li><strong>The whitespace heuristic read generated output.</strong> <code>node_modules</code> was excluded but <code>.next/</code> was not, and a bundler legitimately emits long whitespace runs — three findings per build in a clean repo. Now also skips <code>.nuxt</code>, <code>.turbo</code>, <code>.svelte-kit</code>, <code>.output</code>, <code>.vercel</code>, <code>.cache</code>, <code>coverage</code>. <code>dist/</code> and <code>build/</code> are deliberately still scanned: those get committed, and are a real place to hide a payload.</li>
+        <li><strong>The new stray-asset check flagged <code>.gitkeep</code>.</strong> Empty files and the usual placeholders are now skipped — a task has to execute something, and an empty file cannot be it.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="stack" id="v1-3-1">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.3.1</h2>
+      <span class="rel-date">2026-10-02</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — <code>scan github</code> reported clean on an infected repo</h3>
+      <ul class="rel-list">
+        <li><strong><code>producer | grep -q X</code> could report NO MATCH when X was present.</strong> <code>grep -q</code> exits on the first match, which SIGPIPEs whatever is still writing. <code>bin/snare</code> runs under <code>set -o pipefail</code>, so that 141 became the pipeline's status and every caller read it as "not found". The failure is size-dependent, which is why it survived: it only bites once the producer has more to write than the pipe buffer holds, so small fixtures always passed.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="stack" id="v1-3-0">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.3.0</h2>
+      <span class="rel-date">2026-10-02</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — scanner reported clean on an infected repo</h3>
+      <ul class="rel-list">
+        <li><strong>A payload wearing an extension snare did not glob was invisible.</strong> The 2026-10 sample shipped as <code>public/fonts/fa-solid-300.llf</code> — about 2000 tab characters followed by an obfuscated loader. Section 3 globs only <code>.woff2/.woff/.ttf/.otf</code>, and section 4 only <code>.js/.mjs/.cjs/.ts</code>, so the file was read by neither and the scan printed "no code hidden past whitespace". The same campaign's <code>.woff2</code> drop was caught immediately, so the extension was the whole evasion. Section 3 now also reports any file in a <code>fonts/</code>, <code>assets/</code> or <code>static/</code> directory whose extension is not an asset or script type, and previews it with whitespace squeezed. Known residual gap, recorded in the code: <code>.eot</code> and <code>.svg</code> still pass, because they are real asset types here and their magic is not verified.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — the guard follows a rotating C2</h3>
+      <ul class="rel-list">
+        <li><strong><code>snare c2</code></strong> resolves the live C2 from the blockchain dead drop the loader itself reads, so a shipped IP list no longer goes stale by design. The loader takes the latest transaction from a fixed Ethereum sender and reads the first 8 bytes of that transaction's <code>to</code> address as two IPv4 addresses; the operator rotates by signing a new transaction. snare reads the same drop and feeds it into the guard's kill list. <code>91.218.183.174</code> — live at the time of writing, and absent from the previous hardcoded list — is now covered both dynamically and as a builtin. The lookup is read-only against a public explorer, refreshes at most once a day in a detached process, and the 1-second guard loop only ever reads a cached file, so the hot path stays fork-free.</li>
+        <li><code>snare_py</code> picks python3 / python / <code>py -3</code>, for Git Bash hosts that only ship the launcher.</li>
+        <li>New IOCs for the 2026-10 campaign: the C2, both staging paths, the sender address, the <code>helloipbot</code> dead-drop marker, the second XOR key and <code>NONCE_FANOUT</code>. Patterns generic enough to fire on ordinary web3 code were deliberately left out.</li>
+        <li>Five selftest checks covering the decoder, the kill list without a cache, and that the stray-asset check flags the <code>.llf</code> shape while leaving a real font and an ordinary script in an asset directory alone. 32 checks total.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <section class="stack" id="v1-2-0">
   <div class="rel">
     <div class="rel-head">
       <h2 class="rel-v">1.2.0</h2>
       <span class="rel-date">2026-09-10</span>
-        <span class="tag now">Current</span>
     </div>
     <p class="lede">Remediation could delete the file it was meant to clean. If you ran <code>snare fix --push</code> on a release before this one, check the repository: a build config may have been removed rather than repaired.</p>
     <div class="rel-group">
@@ -153,6 +321,66 @@ snare update && snare selftest</pre></div></div>
         <li>The notify templates lead with rotation too, and carry the full list including the clipboard and the Actions workflow that keeps exfiltrating after the dropper is gone. <a href="https://github.com/AviOfLagos/snare/pull/32">#32</a></li>
         <li><code>snare version</code> no longer runs a live fetch to decide whether to nudge; a one-line command took about five seconds on a slow link. <a href="https://github.com/AviOfLagos/snare/pull/41">#41</a></li>
         <li>The site is a multi-page field guide with corrected document semantics, a crawler policy naming 29 search and AI crawlers, <code>llms.txt</code>, and structured data on every page. <a href="https://github.com/AviOfLagos/snare/pull/33">#33, #35, #37</a></li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — <code>snare doctor</code> was macOS-only, and said so in neither place</h3>
+      <ul class="rel-list">
+        <li><strong>The guard check asked <code>launchctl</code> on every platform.</strong> On Linux the guard is a systemd user unit and on Windows a scheduled task, so doctor reported "guard not installed" no matter what it was actually doing. It now asks the right supervisor per platform, distinguishes <em>installed but stopped</em> from <em>not installed</em>, and counts a hand-started <code>snare guard run</code> as running.</li>
+        <li><strong>"Persistence spots" checked three macOS paths that do not exist on Linux</strong>, found nothing in them, and printed <code>empty</code> three times — a clean bill of health from having looked nowhere. This is the same false-clean shape as the scanner bugs in 1.1.0, in the one command whose entire job is answering "is this machine compromised". It now checks the locations that platform actually uses — systemd user units, autostart, <code>/etc/cron.d</code> — and lists what it finds rather than only counting. The user crontab is checked everywhere, which is where the RAT on the reference host lived.</li>
+        <li><strong>Added a Node and npm integrity check</strong>, because the package manager is a file like any other and nothing was looking at it. It finds every npm on the system without <em>running</em> npm to ask — running npm was the thing that executed the loader — and flags <code>lib/*.js</code> carrying a hidden payload or a known IOC. It also reports <code>~/.node_modules</code> (a legacy global resolution path, rarely deliberate, and where the RAT's dependencies were planted) and a <code>NODE_OPTIONS</code> <code>--require</code>/<code>--import</code> injection in the environment or a shell profile.</li>
+        <li><code>cmd_doctor</code> moved out of <code>bin/snare</code> into <code>lib/doctor.sh</code>, like every other command.</li>
+        <li><code>snare selftest</code> covers all of it: 3 checks asserting a patched npm is flagged, an intact one is not, and <code>guard_state</code> answers for the host platform. 27 in total.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — where a detection came from</h3>
+      <ul class="rel-list">
+        <li><strong><code>snare guard origins</code></strong> — an append-only provenance log (<code>$SNARE_HOME/logs/origins.log</code>) recording, per detection: the file responsible, the working directory, the full parent chain, and a link to the evidence dump. It ends with the most frequent origins, because a source that keeps re-launching shows up as a count.</li>
+        <li>The guard now walks the <strong>parent chain</strong> at detection time and records it. <code>node -e &lt;payload&gt;</code> names no file on disk; its parent almost always does, and that parent is the thing that needs cleaning. On the host above this resolves in one line to <code>.../node_modules/npm/lib/cli.js</code>.</li>
+        <li>Ancestry is captured <strong>before</strong> anything else in the handler. These processes exit in well under a second, and a parent that has already gone is a dead end.</li>
+        <li>A dropper that deletes itself is still reported, as <code>&lt;path&gt; (no longer on disk)</code>. Reporting a path that is gone beats reporting nothing, which is what the first version did.</li>
+        <li>Evidence dumps gain an <code>origin</code> section and the parent chain. They do <strong>not</strong> record the process environment: on a machine being investigated for credential theft, writing every environment variable into a log file is its own leak.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — IOCs from a live host, 2026-09-06..08</h3>
+      <ul class="rel-list">
+        <li><code>193.247.144.38</code> — the EtherHiding loader's C2. Not the address in the existing IOC list; the operator rotates it from the blockchain, which is the whole point of that design and the reason blocking one IP is not a fix.</li>
+        <li><code>194.11.226.41</code> — a <strong>second, separate implant</strong>: an obfuscated socket.io RAT dropped to <code>~/.local/share/&lt;random&gt;.js</code>, held by a <code>crontab <a href="https://github.com/reboot">@reboot</a></code> line, writing to a decoy <code>VSCodeUpdater.log</code>, with its dependencies (<code>axios</code>, <code>socket.io-client</code>) installed into <code>~/.node_modules</code> so Node's legacy global resolution would find them. Its command line contained <strong>no loader string at all</strong> — the guard would not have caught it. It is matched now by the shape of its argument: <code>--token "http://IP:PORT|SECRET"</code>.</li>
+        <li><code>/<em>RS260605</em>/</code>, <code>/<em>M260630A</em>/</code> — markers the payload writes into what it patches, and the ones that identify a patched file at rest.</li>
+        <li>The npm-patch route matters on its own: <code>ignore-scripts=true</code> was set on that host and did not help, because the package manager itself was modified rather than any package's install script.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — one command from picking to fixing</h3>
+      <ul class="rel-list">
+        <li><strong><code>snare fix --pick</code></strong> chooses organisations from the same list <code>scan orgs</code> prints, scans them, and remediates what it finds, in one pass. It is a dry run unless you add <code>--push</code>; <code>--purge-history --push</code> also erases the payload from all history. <code>--owner a,b</code> is the same thing without the prompt, for a script or a timer. The destructive flags stay on the command line rather than hiding inside a friendlier-sounding verb — force-pushing rewritten history across an organisation should be legible in your shell history.</li>
+        <li>With <code>--purge-history</code> it checks for <code>git-filter-repo</code> <strong>before</strong> the picker and the scan. The check previously lived inside the per-repository purge, so you chose an organisation, waited out a full scan and a clone, and only then found out it could not proceed.</li>
+        <li>It repeats the rotate-first warning at the last point before anything is written to a repository other people depend on.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — choosing what to scan</h3>
+      <ul class="rel-list">
+        <li><strong><code>snare scan orgs</code></strong> lists every account and organisation your token can reach, largest first, with how many repositories each holds and how many of those are private. Until now the only way to narrow a scan was to already know an organisation's exact login; the only alternative was scanning everything, which on a real account is 22 organisations and around 950 repositories — several thousand API calls. Individual accounts you hold a single collaborator bit on are collapsed into a count; <code>--all</code> lists them.</li>
+        <li><strong><code>snare scan github --pick</code></strong> shows that same list and lets you choose from it — <code>2</code>, <code>2,5</code>, <code>1-4</code>, <code>2,7-9</code> or <code>all</code>. It refuses to run without a terminal and tells you the non-interactive equivalent instead.</li>
+        <li><strong><code>snare scan github --owner</code> takes a list</strong>: <code>--owner a,b,c</code>. This is what <code>--pick</code> resolves to, so a selection made once can be re-run from a script or a timer.</li>
+        <li>The repository counts are the number <code>--owner</code> will <em>actually</em> scan, taken from the same call the scan uses. Deriving them from the affiliation endpoint was cheaper but wrong — it counts only repositories you are directly attached to, so one organisation listed as holding 1 repository actually held 5, and another listed as 4 held 123. Counting runs in bounded parallel batches (<code>SNARE_COUNT_JOBS</code>, default 8); sequentially it took 41 seconds.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — scanning</h3>
+      <ul class="rel-list">
+        <li><strong>An unrecognised flag to <code>scan github</code> was ignored in silence.</strong> <code>--all-branch</code> instead of <code>--all-branches</code>, or any other typo, quietly scanned every repository you can reach rather than the narrower thing you asked for. Unknown flags are now an error, as they already were in <code>report</code> and <code>respond</code>.</li>
+        <li><strong>The local <code>scan repo</code> lost its primary detector on Debian and Ubuntu.</strong> The structural test — code, a long whitespace run, then more code, the signal that catches a variant carrying none of the IOC strings — was an <code>awk</code> interval expression, <code>{50,}</code>. <code>mawk</code>, the default <code>awk</code> on Debian and Ubuntu, accepts that syntax and matches nothing, so the test never fired there: a repository whose only infection was a payload padded past a run of whitespace came back <code>No IOC matches</code>, exit 0. It reported clean on an infected repository, which is the failure this changelog lists first. The test now runs through <code>grep -E</code>, the same engine <code>scan github</code>, <code>fix</code> and <code>hook</code> already use for that pattern, and the <code>selftest</code> sample it is checked against no longer carries an IOC string of its own — it did, so the test passed through the working-tree IOC grep and never exercised the structural test at all.</li>
+        <li><strong>The by-hand long-line command on the inspection page never looked at the file types the payload lands in.</strong> It globbed <code><em>.js</code>, so <code>postcss.config.mjs</code> and <code>tailwind.config.mjs</code> — the file every live infection of this campaign sits in — were not passed to <code>awk</code> at all. It now also matches <code></em>.mjs</code> and <code>*.cjs</code>, the same set <code>scan repo</code> walks.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — test coverage</h3>
+      <ul class="rel-list">
+        <li><code>snare selftest</code> now covers remediation, not just detection: 14 checks asserting that a build config and <code>package.json</code> survive with the payload gone and still parse, that a dropper, a fake font and a worm artifact are removed, and that a genuine font, a clean source file and an honest build task are left alone. 24 checks in total.</li>
       </ul>
     </div>
   </div>
@@ -274,7 +502,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.2.0</a> · MIT</span>
+    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.4.0</a> · MIT</span>
   </div>
 </footer>
 </div>

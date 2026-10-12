@@ -7,6 +7,160 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.4.0] — 2026-10-12
+
+Three people found this campaign on their own machines and wrote up what they
+saw: [@kleenpulse](https://github.com/kleenpulse) (#47),
+[@ibraheembello](https://github.com/ibraheembello) (#46) and
+[@SamuelOshin](https://github.com/SamuelOshin) (#44). Every item below is a
+sample or a bug they reported, with the reproduction and the measurement taken
+here before and after.
+
+### Fixed — false clean results
+
+Measured on a reconstruction of the sample in #47, snare reported **1 finding
+out of 15**. On the same repository without the whitespace trick it reported
+**no findings at all** — while `npm run dev` ran a loader and the editor
+re-dropped it at every session.
+
+- **The run scripts, not the install hooks.** `package.json` keeps every
+  script it had and gains `"dev": "node api.js && next dev"` (and the same for
+  `build` and `start`), so nothing has to be installed for the loader to run
+  and `--ignore-scripts` is irrelevant. Section 2 only ever read
+  `preinstall`/`postinstall`/`prepare`. The shape on its own is an ordinary
+  build step — `node scripts/build.js && tsc` is honest work — so the check
+  fires only when the file being run is itself obfuscated: one line over 5,000
+  characters, a `_0x` identifier array, or an assignment to `global[..]`.
+- **The AI agent's own config is the persistence.** A `SessionStart` hook in
+  `.claude/settings.json` runs a dropper every time a session opens. It
+  survives removing the package that delivered it, npm never sees it, and the
+  `.claude/setup.mjs` and `.vscode/setup.mjs` copies re-create each other, so
+  removing one directory fixes nothing. Hooks are a real feature — snare ships
+  a plugin itself — so the command decides: a `prettier` hook is a note, `node
+  .vscode/setup.mjs` is a finding.
+- **The obfuscated loader set `global['!']`, not `global.i`.** The marker list
+  and the history cleaner both keyed on `global\.i`, so the obfuscated half of
+  this campaign matched nothing and `--purge-history` rewrote nothing while
+  reporting success. The campaign tags `4738-2` and `2503-2`, the
+  push-forging artefacts (`temp_auto_push.bat`, `temp_interactive_push.bat`,
+  `branch_structure.json` — added to `.gitignore` so they stay out of `git
+  status`) and the Windows clipboard stealer
+  (`GetClipboardSequenceNumber` under a hidden `-EncodedCommand`) are IOCs now.
+- **`doctor` never looked at npm on Windows.** It printed `no npm installation
+  found to check` on every Windows host: it knew only the Unix
+  `lib/node_modules` layout, never `%APPDATA%\npm\node_modules\npm`. That is
+  also the copy that *runs* — the `npm` and `npx` shims prefer a global-prefix
+  install over the one bundled in Program Files, so a single `npm i -g npm` is
+  enough. A live infection sat there while `doctor` reported clean (#46). Size
+  is checked first, because it needs no knowledge of the malware at all:
+  measured 407 bytes here and 419 bytes on the reference host, against 503,857
+  and 1,332,948 bytes in the two reported infections.
+
+### Fixed — parser differentials
+
+Three checks decided from bytes rather than from the parsed document, and a
+JSON escape walked past all three. VS Code and Claude both resolve
+`"\u0066olderOpen"` to `folderOpen` and run the task; `grep folderOpen` finds
+nothing in the file. Measured: a repository carrying exactly that was executed
+and reported no findings.
+
+- **`.vscode/tasks.json` was gated on `grep -q folderOpen`.** The verdict now
+  comes from the parsed document and compares resolved strings, so the escape
+  has nothing to hide behind.
+- **An agent config that could not be parsed was silently skipped.** One `//`
+  comment in `.claude/settings.json` made `json.loads` throw, the check exited
+  0, and a `SessionStart` dropper went unreported while the agent still ran it.
+  Both files are read as JSONC, and a config nothing here can parse is a
+  finding of its own — VS Code is more tolerant than any parser snare ships,
+  so silence is the wrong default.
+- **The history cleaner had its own byte-level pre-filter** in front of the
+  same parse, with the same result for `--purge-history`. Four review passes
+  found four variants of that one gate — an escaped `"\u0074asks"` key, a
+  UTF-8 BOM, 2,000 leading spaces, and a UTF-16 file that VS Code reads and
+  runs while the same bytes decode to mojibake as UTF-8. The lesson is the
+  gate, not the variants: it now tests nothing but shape, on text decoded the
+  way an editor decodes it, and every verdict is taken after parsing. All four
+  have regression tests, as do the controls — `package.json`, `tsconfig.json`,
+  an honest `tasks.json` and a PNG are asserted untouched, because a
+  shape-only gate parses more blobs than a byte-matched one.
+
+### Fixed — destructive behaviour
+
+- **A 0-byte fake font was treated as a genuine font.** `magic4` returns
+  nothing for a file with no bytes to read, and `is_font` read that as "font",
+  so a dropper committed as an empty `public/fonts/fa-solid-500.woff2` was
+  skipped by `fix` and left in place along with the task that overwrites and
+  runs it (#44).
+- **`tasks.json` is JSONC, and that deleted people's build tasks.** Real VS
+  Code files carry `//` comments, `/* */` blocks and a trailing comma;
+  `json.loads` rejects all three, and the caller read "cannot parse" as
+  "nothing legitimate in it" and removed the file. A project with honest build
+  tasks plus one injected `folderOpen` task lost every task it had (#44). Both
+  cleaners now parse JSONC, and the history cleaner identifies a `tasks.json`
+  blob by content — `git filter-repo` hands its blob callback no filename,
+  which is why a purge rewrote payload lines but left every injected task
+  sitting in history.
+- **`fix` invented a branch called `origin` and pushed it.**
+  `refs/remotes/origin/HEAD` short-names to plain `origin`, which passes
+  `grep -v HEAD`; `${ref#origin/}` then leaves `origin` unchanged, so the
+  tip-cleaning loop created a local branch of that name and force-pushed it as
+  `refs/heads/origin` on the remote being remediated (#44).
+- **A failed push was reported as a success.** `git push ... | tail -2`
+  discards the exit status, so a 443 timeout printed its error into the pipe
+  while the purge reported success and the rewritten history had never left
+  the machine (#44).
+
+### Fixed — false positives
+
+- **The whitespace heuristic fired on block comments.** Measured on a real
+  53,740-file project: 5 findings, every one of them aligned prose inside a
+  `/* */` comment, where nothing after the whitespace run can execute. That
+  project now reports clean. A line whose first non-space character is `*`,
+  `//` or `#` is skipped.
+
+### Added — forged force-pushes
+
+The remote tip comes back carrying the real commit's subject, author and
+author date under a new hash, so the incoming commit reads exactly like the
+one you pushed; git shows `1 ahead, 1 behind` with identical messages, which
+VS Code's sync counter makes look harmless, and the next pull merges it. What
+the forgery does not reproduce is the committer — the timezone flips. Section
+5 reports it before a pull can merge it. Gated on that timezone differing, so
+an ordinary local amend or rebase stays silent.
+
+### Changed — being behind is now a visible risk
+
+- **A clean verdict says when it came from an outdated scanner.** This is the
+  one output that stops someone looking further, so `scan repo` now prints the
+  commit distance and what that version could not see. Cache only — no network
+  on that path.
+- **The notice reaches installs that are not git checkouts.** The refresh
+  returned early without a `.git` directory, so anyone who downloaded a zip or
+  tarball was never told anything at all. The version in the remote's
+  `bin/snare` is recorded as well, which works without a repository.
+- **The notice says what is missing, not just that something is.** It named
+  1.1.0 forever; it now names the release that fixed the false-clean bug the
+  running version still has.
+
+### Fixed — the website could not drift, but it did
+
+`## [Unreleased]` is not a version, so `changelog-gen` ignored the heading and
+folded all 193 lines under it into the release above — the site showed 1.2.0's
+notes under 1.3.0. The content has been moved into the release it shipped in,
+and a `## ` heading that is not `## [x.y.z] — date` is now a hard error, so
+this fails CI rather than publishing quietly.
+
+### Not fixed
+
+- `--purge-history` still cannot remove a *fake font* from history by name:
+  `git filter-repo`'s blob callback is given no filename, and a font-named
+  payload has no reliable content signature. Injected `folderOpen` tasks are
+  handled by content; for a font, remove the path explicitly:
+  `git filter-repo --invert-paths --path public/fonts/<file>`.
+- How this family reaches a machine in the first place is still unidentified.
+  #47 documents npm's own `cli.js` rewritten on disk, but not what put it
+  there.
+
 ## [1.3.4] — 2026-10-02
 
 ### Fixed — `scan repo` did not finish on a real project
@@ -183,51 +337,93 @@ Result across 11 local clones: `tech-ember-fest` 43 → 0, `chief-of-staff`
   and that the stray-asset check flags the `.llf` shape while leaving a real
   font and an ordinary script in an asset directory alone. 32 checks total.
 
-## [Unreleased]
+## [1.2.0] — 2026-09-10
 
-### Fixed — remediation
+Remediation could delete the file it was meant to clean. If you ran
+`snare fix --push` on a release before this one, check the repository: a build
+config may have been removed rather than repaired.
 
-- **`fix` deleted the files a project needs instead of cleaning them.** The
-  branch-tip pass removed every file matching an IOC string — and a payload
-  appended to `postcss.config.mjs` *is* an IOC string, so the build config was
-  deleted before the strip pass further down the same function could ever see
-  it. `snare fix --all --push` pushed a commit that removed the malware and the
-  project's build along with it. Stripping now runs first: a file the project
-  needs (any `*.config.*`, `package.json`, a lockfile, `tsconfig*.json`) is
-  stripped and kept, never deleted, and only files that are payload and nothing
-  else are removed.
-- **`.vscode/tasks.json` was deleted whole.** A repository with a real build
-  task and one injected `folderOpen` task lost both. Only the `folderOpen` task
-  is removed now; the file goes only when nothing legitimate is left in it, and
-  a file that merely mentions `folderOpen` without defining such a task is
-  reported rather than deleted.
+### Fixed — destructive behaviour
+
+- **`fix` deleted the build config instead of cleaning it.** The delete pass
+  removed any file matching an IOC string, and a payload appended to
+  `postcss.config.mjs` *is* an IOC string — so the file was gone before the
+  strip pass further down the same function could reach it. It pushed a commit
+  that removed the malware and the project's build with it. Stripping runs
+  first now, and a file the project needs is cleaned and kept, never deleted.
+  Reported and fixed by @phoenixdahdev. (#39)
+- **`.vscode/tasks.json` was deleted whole**, losing honest build tasks along
+  with the injected `folderOpen` one. Only the malicious task goes now. (#39)
 - **A payload on a line of its own was never removed.** Both cleaners keyed on
-  the one-line signature — code, a long whitespace run, then code. The same
-  payload placed after a newline matched neither, so `--purge-history` rewrote
-  nothing and still reported success. Dropping a whole line is destructive, so
-  that rule is gated narrowly: long, minified-shaped, a hard campaign marker
-  *and* obfuscated code. Gating on the marker alone deleted every line that
-  legitimately quotes one, including the guard's own kill pattern.
-- **Tip cleaning looked for artifacts by content only.** `setup_bun.js` and a
-  payload wearing a `.woff2` extension are identified by filename and by magic
-  bytes, which no content grep can see — so `scan` reported them and `fix`
-  walked straight past them.
-- **`--purge-history` verified itself by grepping for one marker string.** An
-  obfuscated variant contains none of them, so the check passed on blobs it had
-  not changed. It now re-runs the same cleaner over every blob and counts what
-  is still strippable, so the verification and the fix cannot disagree.
-- **The two cleaners had drifted apart.** Tip cleaning and history purging each
-  carried their own copy of what a payload looks like. There is one definition
-  now, shared by both.
-- **A dry run that found something was reported as a failure.** `snare fix --all`
-  over five infected repositories printed `succeeded: 0    failed: 5`, and `FAILED:`
-  against each one, when it had read all five correctly and — being a dry run —
-  deliberately changed nothing. A dry run with findings now returns 3 instead of
-  sharing an exit code with a genuine error, and the summary reads
-  `carrying a payload: 5    already clean: 0    unreadable: 0`.
-- `fix` honours `.snare-tool` the way `scan` and `hook` already did. Without it,
-  remediating a fork of snare stripped the guard's own kill pattern out of
-  `lib/guard.sh`.
+  the one-line signature. The new rule is gated narrowly — long, minified in
+  shape, a hard campaign marker *and* obfuscated code — because dropping a
+  whole line on a weaker signal is itself destructive. (#39)
+
+### Fixed — detection and coverage
+
+- **Worm artifacts and fake assets are now found by filename and magic bytes**
+  during remediation, not only during scanning: `scan` reported them and `fix`
+  walked straight past. (#39)
+- **npm's own `lib/cli.js` is checked.** A live host was found with ~1.4MB
+  appended to it after 200 spaces, so every `npm` invocation ran the loader —
+  `--ignore-scripts` does not help, because it is the package manager itself
+  and not a package script. New campaign `A8-4893-2`, with two C2 addresses and
+  a socket.io RAT held by a crontab `@reboot` line. (#39)
+- The doctor fixture path is normalised, so the npm check no longer failed on
+  macOS while passing on Linux — the suite reported "detection is broken" for a
+  detector that was working correctly. (#39)
+
+### Fixed — contribution and platform
+
+- **No pull request from a fork could ever pass CI.** `ci.yml` passed
+  `github.head_ref` to the reusable workflow, which then tried to check that
+  ref out of this repository — a fork's branch does not exist here, so checkout
+  failed three times before a single check ran. The first outside contribution
+  hit it, and the failure looked like the contributor's fault rather than ours.
+  It uses `refs/pull/N/head` now. (#40)
+- **Windows `guard install` failed with no explanation.** `schtasks.exe` needs
+  a Windows path and was handed an MSYS one, and every error was discarded. It
+  now converts the path, prints the real error, and falls back to a Startup
+  entry that needs no administrator rights. (#32)
+- snare flagged its own plugin manifest and skill, which quote the malware's
+  keywords because they describe it. (#38)
+
+### Added
+
+- **`snare respond`** — one guided clean-up instead of nine commands, in the
+  order that actually works: rotate credentials, clean the machine you push
+  from, then the repositories, then tell your collaborators. Resumable, asks
+  before every action, refuses to run unattended. (#33, #34)
+- **A passive update notice.** Every command now says, at most once a day and
+  in one line, when the installation is behind. It never blocks — the check is
+  cached and refreshed off the command path — sends nothing, and is off with
+  `SNARE_NO_UPDATE_CHECK=1`. The people who most need the fixes are the ones
+  who cloned once and never thought about it again. (#41)
+- **snare ships as a Claude Code plugin**, so a coding agent can find and run
+  it. (#38)
+- An incident-response walkthrough on the site, and a copy-paste prompt for
+  people who would rather have an AI assistant do the work — written to forbid
+  the assistant from running anything destructive without asking. (#36)
+
+### Changed
+
+- Post-scan guidance leads with rotating credentials and cleaning your machine,
+  not with `snare fix`. Cleaning repositories first is wasted work while the
+  machine that pushes to them is still infected. (#31)
+- The notify templates lead with rotation too, and carry the full list
+  including the clipboard and the Actions workflow that keeps exfiltrating
+  after the dropper is gone. (#32)
+- `snare version` no longer runs a live fetch to decide whether to nudge; a
+  one-line command took about five seconds on a slow link. (#41)
+- The site is a multi-page field guide with corrected document semantics, a
+  crawler policy naming 29 search and AI crawlers, `llms.txt`, and structured
+  data on every page. (#33, #35, #37)
+
+
+<!-- The groups below shipped in 1.2.0 but were written under a
+     `## [Unreleased]` heading, which changelog-gen cannot parse as a
+     version — so the website rendered all of it under 1.3.0. Moved
+     into the release it actually belongs to. -->
 
 ### Fixed — `snare doctor` was macOS-only, and said so in neither place
 
@@ -376,87 +572,6 @@ Campaign `A8-4893-2`, two stages with two unrelated C2 addresses:
   and that a genuine font, a clean source file and an honest build task are left
   alone. 24 checks in total.
 
-## [1.2.0] — 2026-09-10
-
-Remediation could delete the file it was meant to clean. If you ran
-`snare fix --push` on a release before this one, check the repository: a build
-config may have been removed rather than repaired.
-
-### Fixed — destructive behaviour
-
-- **`fix` deleted the build config instead of cleaning it.** The delete pass
-  removed any file matching an IOC string, and a payload appended to
-  `postcss.config.mjs` *is* an IOC string — so the file was gone before the
-  strip pass further down the same function could reach it. It pushed a commit
-  that removed the malware and the project's build with it. Stripping runs
-  first now, and a file the project needs is cleaned and kept, never deleted.
-  Reported and fixed by @phoenixdahdev. (#39)
-- **`.vscode/tasks.json` was deleted whole**, losing honest build tasks along
-  with the injected `folderOpen` one. Only the malicious task goes now. (#39)
-- **A payload on a line of its own was never removed.** Both cleaners keyed on
-  the one-line signature. The new rule is gated narrowly — long, minified in
-  shape, a hard campaign marker *and* obfuscated code — because dropping a
-  whole line on a weaker signal is itself destructive. (#39)
-
-### Fixed — detection and coverage
-
-- **Worm artifacts and fake assets are now found by filename and magic bytes**
-  during remediation, not only during scanning: `scan` reported them and `fix`
-  walked straight past. (#39)
-- **npm's own `lib/cli.js` is checked.** A live host was found with ~1.4MB
-  appended to it after 200 spaces, so every `npm` invocation ran the loader —
-  `--ignore-scripts` does not help, because it is the package manager itself
-  and not a package script. New campaign `A8-4893-2`, with two C2 addresses and
-  a socket.io RAT held by a crontab `@reboot` line. (#39)
-- The doctor fixture path is normalised, so the npm check no longer failed on
-  macOS while passing on Linux — the suite reported "detection is broken" for a
-  detector that was working correctly. (#39)
-
-### Fixed — contribution and platform
-
-- **No pull request from a fork could ever pass CI.** `ci.yml` passed
-  `github.head_ref` to the reusable workflow, which then tried to check that
-  ref out of this repository — a fork's branch does not exist here, so checkout
-  failed three times before a single check ran. The first outside contribution
-  hit it, and the failure looked like the contributor's fault rather than ours.
-  It uses `refs/pull/N/head` now. (#40)
-- **Windows `guard install` failed with no explanation.** `schtasks.exe` needs
-  a Windows path and was handed an MSYS one, and every error was discarded. It
-  now converts the path, prints the real error, and falls back to a Startup
-  entry that needs no administrator rights. (#32)
-- snare flagged its own plugin manifest and skill, which quote the malware's
-  keywords because they describe it. (#38)
-
-### Added
-
-- **`snare respond`** — one guided clean-up instead of nine commands, in the
-  order that actually works: rotate credentials, clean the machine you push
-  from, then the repositories, then tell your collaborators. Resumable, asks
-  before every action, refuses to run unattended. (#33, #34)
-- **A passive update notice.** Every command now says, at most once a day and
-  in one line, when the installation is behind. It never blocks — the check is
-  cached and refreshed off the command path — sends nothing, and is off with
-  `SNARE_NO_UPDATE_CHECK=1`. The people who most need the fixes are the ones
-  who cloned once and never thought about it again. (#41)
-- **snare ships as a Claude Code plugin**, so a coding agent can find and run
-  it. (#38)
-- An incident-response walkthrough on the site, and a copy-paste prompt for
-  people who would rather have an AI assistant do the work — written to forbid
-  the assistant from running anything destructive without asking. (#36)
-
-### Changed
-
-- Post-scan guidance leads with rotating credentials and cleaning your machine,
-  not with `snare fix`. Cleaning repositories first is wasted work while the
-  machine that pushes to them is still infected. (#31)
-- The notify templates lead with rotation too, and carry the full list
-  including the clipboard and the Actions workflow that keeps exfiltrating
-  after the dropper is gone. (#32)
-- `snare version` no longer runs a live fetch to decide whether to nudge; a
-  one-line command took about five seconds on a slow link. (#41)
-- The site is a multi-page field guide with corrected document semantics, a
-  crawler policy naming 29 search and AI crawlers, `llms.txt`, and structured
-  data on every page. (#33, #35, #37)
 
 ## [1.1.0] — 2026-08-29
 

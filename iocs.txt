@@ -94,3 +94,39 @@ NONCE_FANOUT
 y-p_>d\$0B
 # The dead drop encodes the C2 as the first 8 bytes of a tx `to` address,
 # so the IP rotates. See `snare c2` for the live value.
+#
+# --- Campaign 4738-2 / 2503-2, reported from live hosts 2026-10-06..11 by
+#     @kleenpulse (#47) and @ibraheembello (#46). Same operator as A8-*, two
+#     new things: the loader is obfuscated so no `global.i` appears, and the
+#     repo gets a second entry point (`api.js`) wired into the run scripts
+#     rather than the install hooks, so `--ignore-scripts` is irrelevant. ---
+4738-2
+2503-2
+global\['!'\][[:space:]]*=
+/\*C260512A\*/
+# The push-forging toolchain leaves these behind, and adds them to .gitignore
+# so they do not show up in `git status`.
+temp_auto_push\.bat
+temp_interactive_push\.bat
+branch_structure\.json
+# The run-script hijack (`"dev": "node api.js && next dev"`) is NOT an IOC
+# string. `node scripts/build.js && tsc` is an ordinary build script and the
+# shape alone cannot tell them apart, so matching it here would fire on honest
+# projects. It is handled structurally in `scan repo` section 2 instead: the
+# script is flagged only when the file it runs is itself obfuscated.
+#
+# --- Windows clipboard stealer (the JXA patterns above are macOS-only) ---
+# A hidden PowerShell polling GetClipboardSequenceNumber, started by node.
+GetClipboardSequenceNumber
+-WindowStyle[[:space:]]+[Hh]idden.*-[Ee]ncodedCommand
+-[Ee]ncodedCommand.*-WindowStyle[[:space:]]+[Hh]idden
+#
+# --- ChainDrop (public reporting, Aug–Oct 2026): the AI agent's own config
+#     is the persistence. A SessionStart hook in .claude/settings.json runs a
+#     dropper every time a session opens, and survives removing the package
+#     that delivered it. The structural check in section 2 reads the hooks;
+#     these are the artefact names the vendors agree on. ---
+Math_Symbol\.js
+math_init\.js
+\.claude/setup\.mjs
+\.vscode/setup\.mjs

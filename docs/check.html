@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Check your machine — four commands, one minute — snare</title>
-<meta name="description" content="Four checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, and fonts that are not fonts.">
+<title>Check your machine — seven commands, two minutes — snare</title>
+<meta name="description" content="Seven checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, fonts that are not fonts, an npm script that runs something extra, an AI-assistant hook, and a forged force-push on your remote.">
 <meta name="author" content="AviOfLagos">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://avioflagos.github.io/snare/check.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="snare">
-<meta property="og:title" content="Check your machine — four commands, one minute — snare">
-<meta property="og:description" content="Four checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, and fonts that are not fonts.">
+<meta property="og:title" content="Check your machine — seven commands, two minutes — snare">
+<meta property="og:description" content="Seven checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, fonts that are not fonts, an npm script that runs something extra, an AI-assistant hook, and a forged force-push on your remote.">
 <meta property="og:url" content="https://avioflagos.github.io/snare/check.html">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Check your machine — four commands, one minute — snare">
-<meta name="twitter:description" content="Four checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, and fonts that are not fonts.">
+<meta name="twitter:title" content="Check your machine — seven commands, two minutes — snare">
+<meta name="twitter:description" content="Seven checks you can run right now against any clone to find a repository-committed dropper: a live loader process, the operator wallet in your files or history, an editor auto-run task, fonts that are not fonts, an npm script that runs something extra, an AI-assistant hook, and a forged force-push on your remote.">
 <meta name="theme-color" content="#C2410C" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪤</text></svg>">
@@ -47,7 +47,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.2.0">v1.2.0</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.4.0">v1.4.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html" aria-current="page">Check</a>
@@ -73,9 +73,9 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <main id="main">
 <div class="wrap page-head">
   <span class="eyebrow">Check by hand</span>
-  <h1>Four checks you can run right now</h1>
+  <h1>Seven checks you can run right now</h1>
   <p class="lede">No tools required, nothing to install. Run these against any clone on your
-  machine — the whole thing takes about a minute. Every command is read-only; none of them change
+  machine — the whole thing takes a couple of minutes. Every command is read-only; none of them change
   anything.</p>
 </div>
 
@@ -110,6 +110,43 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     <p class="verdict">Every real font prints <code>wOF2</code>. Spaces mean you are looking at a script.</p>
   </div>
 
+  <div class="check">
+    <h2>5 · Do your npm scripts run something extra?</h2>
+    <p>This family leaves every script you had and prefixes each one, so the file still looks
+    like yours. The payload runs on <code>npm run dev</code> — no install needed, which is why
+    <code>--ignore-scripts</code> does not help.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">run scripts</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>node -e 'const s=require("./package.json").scripts||{};
+for (const [k,v] of Object.entries(s)) if (/\bnode\s+\S+\.[cm]?js/.test(v)) console.log(k, "->", v)'</pre></div></div>
+    <p class="verdict">A build step calling your own <code>scripts/build.js</code> is normal. A root
+    <code>api.js</code> or <code>app.js</code> you did not write is not — open it and look at the
+    first line.</p>
+  </div>
+
+  <div class="check">
+    <h2>6 · Does your AI assistant run something at every session?</h2>
+    <p>An agent's own config is an execution vector, and removing the package that delivered the
+    hook does not remove the hook.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">agent hooks</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>cat .claude/settings.json .claude/settings.local.json 2>/dev/null
+ls -la .claude/setup.mjs .vscode/setup.mjs 2>/dev/null</pre></div></div>
+    <p class="verdict bad">A hook you wrote — a formatter, a linter — is fine. <code>node
+    .vscode/setup.mjs</code> is a dropper, and the copies in <code>.claude/</code> and
+    <code>.vscode/</code> re-create each other, so remove both.</p>
+  </div>
+
+  <div class="check">
+    <h2>7 · Has someone rewritten your remote?</h2>
+    <p>The remote tip comes back with your commit's subject, author and date under a different
+    hash. Git reports <code>1 ahead, 1 behind</code> with identical messages, which reads as
+    harmless — and then a pull merges it.</p>
+    <div class="panel"><div class="panel-bar"><span class="label">forged force-push</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>git fetch &amp;&amp; git log --format='%H %cI %s' HEAD..@{u}
+git log --format='%H %cI %s' @{u}..HEAD</pre></div></div>
+    <p class="verdict">Same message and author date on both sides, but a different hash and a
+    committer timezone that is not yours? Do not pull.</p>
+  </div>
+
   <div class="callout">
     <h2>Look for the long line</h2>
     <p>The most reliable giveaway is geometry, not content. This finds any file padded out to hide
@@ -134,7 +171,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     <a class="next-card" href="install.html">
       <span class="step">Nothing matched</span>
       <b>Install snare to keep it that way</b>
-      <p>These four checks cover one clone at one moment. snare runs them continuously, across
+      <p>These seven checks cover one clone at one moment. snare runs them continuously, across
       every repository you can reach, and blocks a push that would carry a payload out.</p>
     </a>
   </div>
@@ -184,7 +221,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.2.0</a> · MIT</span>
+    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.4.0</a> · MIT</span>
   </div>
 </footer>
 </div>

@@ -6,6 +6,7 @@
 # cleaning and history purging. Those two used to carry separate copies that
 # had drifted apart, and only one of them was ever reached.
 _fix_strip_core(){
+  snare_jsonc_py
   cat <<'PY'
 import re
 
@@ -27,6 +28,12 @@ MARK = re.compile(rb'0xa322e5f3d311d3080e6f0121063e9adc2490ef1a'
                   rb'|eth\.blockscout\.com'
                   rb'|/0x/cl[bs]|/0x/ls'
                   rb'|q4fzkxx'
+                  # Campaign 4738-2 / 2503-2. The obfuscated loader sets
+                  # global['!'] instead of global.i, so the marker below
+                  # could not see it and a payload on a line of its own
+                  # survived --purge-history. Reported in #46 and #47.
+                  rb"|global\[['\"]!['\"]\]\s*="
+                  rb'|4738-2|2503-2'
                   rb"|global\.i\s*=\s*['\"]a8-")
 
 def _payload(seg):
@@ -36,8 +43,57 @@ def _dense(ln):
     """Minified-shaped. Prose is mostly spaces; an appended payload is not."""
     return ln.count(b' ') * 10 < len(ln)
 
+# .vscode/tasks.json in HISTORY. filter-repo hands the blob callback no
+# filename, which is why a purge rewrote payload lines but left every injected
+# folderOpen task sitting in history (reported in #44). Content identifies it
+# well enough: a JSON object with a tasks array containing runOn: folderOpen
+# is not something else.
+# The gate is "could this be a tasks.json", never "do these bytes say
+# folderOpen". A byte test is bypassed by a JSON escape: VS Code resolves
+# \u0066olderOpen and runs the task, and a grep for the word finds nothing.
+# Everything after the parse compares resolved strings, case-insensitively.
+def _is_folder_open(task):
+    if not isinstance(task, dict):
+        return False
+    ro = task.get("runOptions")
+    if not isinstance(ro, dict):
+        return False
+    return any(str(k).lower() == "runon" and str(v).lower() == "folderopen"
+               for k, v in ro.items())
+
+def clean_tasks(data):
+    # The gate may not test for ANY byte sequence a parser would resolve. A
+    # first pass gated on b'"tasks"' and the key came back as "\\u0074asks",
+    # which json resolves to tasks and VS Code runs — the same bypass as
+    # folderOpen, one level up. So the gate is shape only: a small JSON
+    # object. What it contains is decided after parsing, never before.
+    if len(data) > 200000:
+        return None
+    # Decode the way an editor would before deciding anything, so the shape
+    # test cannot be dodged with an encoding. Three review passes found three
+    # variants of this one gate — an escaped key, a BOM, 2,000 leading
+    # spaces — so it tests nothing but shape, on normalised text.
+    if to_text(data).lstrip()[:1] != "{":
+        return None
+    try:
+        d = jsonc_load(data)
+        tasks = d["tasks"]
+        if not isinstance(tasks, list):
+            return None
+    except Exception:
+        return None
+    kept = [t for t in tasks if not _is_folder_open(t)]
+    if len(kept) == len(tasks):
+        return None
+    d["tasks"] = kept
+    return (json.dumps(d, indent=2) + chr(10)).encode()
+
+
 def clean(data):
     """Strip the payload and KEEP the file. Returns (data, changed)."""
+    t = clean_tasks(data)
+    if t is not None:
+        return t, True
     out, changed = [], False
     for ln in data.split(b'\n'):
         m = LINE.match(ln)
@@ -125,11 +181,12 @@ PY
 # that runs on folderOpen and keep the rest, rather than deleting someone's
 # build and test tasks along with the malicious one.
 _fix_tasks_prog(){
+  snare_jsonc_py
   cat <<'PY'
-import json, sys
+import sys
 p = sys.argv[1]
 try:
-    d = json.loads(open(p, 'rb').read())
+    d = jsonc_load(open(p, 'rb').read())
     tasks = d["tasks"]
     if not isinstance(tasks, list):
         raise ValueError
@@ -465,9 +522,15 @@ cmd_fix(){
   dim "  restore with: git clone $bundle restored"
 
   hdr "3. Findings"
+  # Enumerate on the FULL ref name. `%(refname:short)` turns
+  # refs/remotes/origin/HEAD into plain "origin", which sails through
+  # `grep -v HEAD`; `${ref#origin/}` then leaves "origin" unchanged, and the
+  # tip-cleaning loop further down created a local branch called `origin` and
+  # force-pushed it to the remote as refs/heads/origin. Reported with the
+  # exact mechanism by @SamuelOshin (#44).
   local found=0 ref br
-  for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
-    br="${ref#origin/}"
+  for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+    br="${ref#refs/remotes/origin/}"
     git show "$ref:.vscode/tasks.json" 2>/dev/null | _qmatch folderOpen \
       && { red "  [$br] .vscode/tasks.json runOn:folderOpen"; found=1; }
     local m; m="$(git grep -InE "$pattern" "$ref" -- 2>/dev/null | head -3)"
@@ -513,10 +576,25 @@ cmd_fix(){
       git remote set-url origin "https://github.com/$repo.git"
     if [ "$push" = 1 ]; then
       ylw "  force-pushing rewritten history (refs/heads only)"
-      local r
+      # `git push ... | tail -2` discards the exit status: a 443 timeout
+      # printed its error into the pipe and the purge reported success while
+      # the rewritten history had not left the machine. Reported in #44.
+      local r po pushfail=0
       for r in $(git for-each-ref --format='%(refname)' refs/heads); do
-        GIT_TERMINAL_PROMPT=0 git push --force origin "$r:$r" 2>&1 | tail -2
+        if po="$(GIT_TERMINAL_PROMPT=0 git push --force origin "$r:$r" 2>&1)"; then
+          [ -n "$po" ] && echo "$po" | tail -2 | sed 's/^/      /'
+        else
+          pushfail=1
+          red "  push FAILED: $r"
+          echo "$po" | tail -3 | sed 's/^/      /'
+        fi
       done
+      if [ "$pushfail" = 1 ]; then
+        red "  History was rewritten LOCALLY but is NOT published. The remote still"
+        red "  carries the payload. Re-run the push once the network is back:"
+        dim "    cd $src && git push --force --all origin"
+        return 1
+      fi
       red "  Collaborators MUST re-clone. Forks, PR refs and old SHAs still hold it —"
       red "  ask GitHub Support to garbage-collect unreachable objects."
     else ylw "  rewritten locally, not pushed. Inspect: cd $src"; fi
@@ -524,8 +602,8 @@ cmd_fix(){
   fi
 
   hdr "4. Clean branch tips"
-  for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
-    br="${ref#origin/}"
+  for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+    br="${ref#refs/remotes/origin/}"
     git checkout -q -B "$br" "$ref" 2>/dev/null || continue
     if _fix_clean_tree "$br" "$pattern"; then
       git commit -q -m "security: remove supply-chain malware dropper
@@ -533,7 +611,15 @@ cmd_fix(){
 Found by snare. Files the project needs (build configs, package.json) were
 stripped of the payload and kept; files that were payload only were removed.
 See the security issue on this repository for detail."
-      [ "$push" = 1 ] && GIT_TERMINAL_PROMPT=0 git push -q origin "$br" && grn "  [$br] pushed"
+      if [ "$push" = 1 ]; then
+        local tp
+        if tp="$(GIT_TERMINAL_PROMPT=0 git push origin "$br" 2>&1)"; then
+          grn "  [$br] pushed"
+        else
+          red "  [$br] push FAILED — cleaned locally, NOT published:"
+          echo "$tp" | tail -3 | sed 's/^/      /'
+        fi
+      fi
     fi
   done
   [ "$push" = 0 ] && ylw "  not pushed (add --push)"
