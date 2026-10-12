@@ -162,7 +162,7 @@ snare update && snare selftest</pre></div></div>
       <h3>Changed — the repository moved to github.com/nexlabz/snare</h3>
       <ul class="rel-list">
         <li>The update channel, the reusable CI workflow, the plugin manifests, the skill and the field-guide links all name the canonical path.</li>
-        <li><code>snare update</code> repoints a stale <code>origin</code> on the way past and says so, rather than changing someone's remote silently. It runs before the local-modifications guard, so a checkout with edits still gets repointed.</li>
+        <li>A stale <code>origin</code> is repointed wherever snare talks to its own remote — not only in <code>snare update</code>, but in the background refresh that feeds the "you are behind" notice, which reaches the network first. A notice sourced from a hijacked remote would be worse than no notice at all. <code>snare update</code> says so out loud; the refresh does it silently, because it must never write to the terminal. It runs before the local-modifications guard, so a checkout with edits still gets repointed, and matches case-insensitively because GitHub treats owner names that way and <code>clone github.com/avioflagos/snare</code> produces a working remote that a case-sensitive match would miss. An <code>ssh://</code> remote on the old path is moved to the canonical HTTPS URL.</li>
         <li>The site moved with it. <code>avioflagos.github.io/snare</code> now returns 404 and the field guide is at <strong>nexlabz.github.io/snare</strong> — which also means every canonical URL, <code>og:url</code> and sitemap entry on the published site had been pointing at a dead host.</li>
       </ul>
     </div>

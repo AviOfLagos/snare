@@ -152,9 +152,16 @@ the one failure it cannot have. So nothing relies on the redirect any more:
 
 - The update channel, the reusable CI workflow, the plugin manifests, the skill
   and the field-guide links all name the canonical path.
-- `snare update` repoints a stale `origin` on the way past and says so, rather
-  than changing someone's remote silently. It runs before the
-  local-modifications guard, so a checkout with edits still gets repointed.
+- A stale `origin` is repointed wherever snare talks to its own remote — not
+  only in `snare update`, but in the background refresh that feeds the "you
+  are behind" notice, which reaches the network first. A notice sourced from a
+  hijacked remote would be worse than no notice at all. `snare update` says so
+  out loud; the refresh does it silently, because it must never write to the
+  terminal. It runs before the local-modifications guard, so a checkout with
+  edits still gets repointed, and matches case-insensitively because GitHub
+  treats owner names that way and `clone github.com/avioflagos/snare` produces
+  a working remote that a case-sensitive match would miss. An `ssh://` remote
+  on the old path is moved to the canonical HTTPS URL.
 - The site moved with it. `avioflagos.github.io/snare` now returns 404 and the
   field guide is at **nexlabz.github.io/snare** — which also means every
   canonical URL, `og:url` and sitemap entry on the published site had been
