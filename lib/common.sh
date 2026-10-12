@@ -153,8 +153,19 @@ def jsonc(data):
             while i + 1 < n and not (s[i] == "*" and s[i + 1] == "/"):
                 i += 1
             i += 2; continue
+        # Trailing commas are dropped HERE, inside the pass that knows where
+        # the strings are. Doing it afterwards with a regex rewrote "a, }"
+        # inside a label to "a }" — the verdict was unaffected, but a cleaner
+        # that quietly edits strings it was only meant to read is its own bug.
+        if c in "}]":
+            k = len(out) - 1
+            while k >= 0 and out[k] in " \t\r\n":
+                k -= 1
+            if k >= 0 and out[k] == ",":
+                del out[k:]
+            out.append(c); i += 1; continue
         out.append(c); i += 1
-    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+    return "".join(out)
 
 def jsonc_load(data):
     text = to_text(data)

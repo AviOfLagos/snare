@@ -126,7 +126,7 @@ _snare_update_write(){
 # reported a repository clean while it was infected, which is the one failure
 # that makes the tool worse than not running it.
 snare_update_risk(){
-  local v="${1:-$SNARE_VERSION}"
+  local v="$SNARE_VERSION"
   if ver_gt 1.4.0 "$v"; then
     dim "  Before 1.4.0 a repository could run a payload on every \`npm run dev\`"
     dim "  and re-drop it at every editor session, and snare reported it clean."
