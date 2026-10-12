@@ -5,7 +5,54 @@
 # ONE definition of what a payload is and how to take it out, shared by tip
 # cleaning and history purging. Those two used to carry separate copies that
 # had drifted apart, and only one of them was ever reached.
+# Shared by the tasks cleaner and the history blob cleaner: VS Code reads
+# tasks.json as JSONC, so real files carry // comments, /* */ blocks and a
+# trailing comma before the closing bracket. json.loads rejects all three, and
+# the caller read "cannot parse" as "nothing legitimate in it" and deleted the
+# file — so a project with honest build tasks plus one injected folderOpen task
+# lost every task it had. Reported by @SamuelOshin (#44).
+_fix_jsonc_core(){
+  cat <<'PY'
+import json, re
+
+def jsonc(data):
+    """JSONC -> JSON text. Comments and trailing commas out, strings intact."""
+    s = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
+    out, i, n = [], 0, len(s)
+    instr = esc = False
+    while i < n:
+        c = s[i]
+        if instr:
+            out.append(c)
+            if esc:         esc = False
+            elif c == chr(92): esc = True
+            elif c == '"':  instr = False
+            i += 1; continue
+        if c == '"':
+            instr = True; out.append(c); i += 1; continue
+        if c == "/" and i + 1 < n and s[i + 1] == "/":
+            while i < n and s[i] != chr(10):
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and s[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (s[i] == "*" and s[i + 1] == "/"):
+                i += 1
+            i += 2; continue
+        out.append(c); i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+def jsonc_load(data):
+    try:
+        return json.loads(data if isinstance(data, str)
+                          else data.decode("utf-8", "replace"))
+    except Exception:
+        return json.loads(jsonc(data))
+PY
+}
+
 _fix_strip_core(){
+  _fix_jsonc_core
   cat <<'PY'
 import re
 
@@ -27,6 +74,12 @@ MARK = re.compile(rb'0xa322e5f3d311d3080e6f0121063e9adc2490ef1a'
                   rb'|eth\.blockscout\.com'
                   rb'|/0x/cl[bs]|/0x/ls'
                   rb'|q4fzkxx'
+                  # Campaign 4738-2 / 2503-2. The obfuscated loader sets
+                  # global['!'] instead of global.i, so the marker below
+                  # could not see it and a payload on a line of its own
+                  # survived --purge-history. Reported in #46 and #47.
+                  rb"|global\[['\"]!['\"]\]\s*="
+                  rb'|4738-2|2503-2'
                   rb"|global\.i\s*=\s*['\"]a8-")
 
 def _payload(seg):
@@ -36,8 +89,37 @@ def _dense(ln):
     """Minified-shaped. Prose is mostly spaces; an appended payload is not."""
     return ln.count(b' ') * 10 < len(ln)
 
+# .vscode/tasks.json in HISTORY. filter-repo hands the blob callback no
+# filename, which is why a purge rewrote payload lines but left every injected
+# folderOpen task sitting in history (reported in #44). Content identifies it
+# well enough: a JSON object with a tasks array containing runOn: folderOpen
+# is not something else.
+FOPEN = re.compile(rb'"runOn"\s*:\s*"folderOpen"', re.I)
+
+def clean_tasks(data):
+    if not FOPEN.search(data):
+        return None
+    try:
+        d = jsonc_load(data)
+        tasks = d["tasks"]
+        if not isinstance(tasks, list):
+            return None
+    except Exception:
+        return None
+    kept = [t for t in tasks
+            if not (isinstance(t, dict) and str((t.get("runOptions") or {})
+                    .get("runOn", "")).lower() == "folderopen")]
+    if len(kept) == len(tasks):
+        return None
+    d["tasks"] = kept
+    return (json.dumps(d, indent=2) + chr(10)).encode()
+
+
 def clean(data):
     """Strip the payload and KEEP the file. Returns (data, changed)."""
+    t = clean_tasks(data)
+    if t is not None:
+        return t, True
     out, changed = [], False
     for ln in data.split(b'\n'):
         m = LINE.match(ln)
@@ -125,11 +207,12 @@ PY
 # that runs on folderOpen and keep the rest, rather than deleting someone's
 # build and test tasks along with the malicious one.
 _fix_tasks_prog(){
+  _fix_jsonc_core
   cat <<'PY'
-import json, sys
+import sys
 p = sys.argv[1]
 try:
-    d = json.loads(open(p, 'rb').read())
+    d = jsonc_load(open(p, 'rb').read())
     tasks = d["tasks"]
     if not isinstance(tasks, list):
         raise ValueError
@@ -465,9 +548,15 @@ cmd_fix(){
   dim "  restore with: git clone $bundle restored"
 
   hdr "3. Findings"
+  # Enumerate on the FULL ref name. `%(refname:short)` turns
+  # refs/remotes/origin/HEAD into plain "origin", which sails through
+  # `grep -v HEAD`; `${ref#origin/}` then leaves "origin" unchanged, and the
+  # tip-cleaning loop further down created a local branch called `origin` and
+  # force-pushed it to the remote as refs/heads/origin. Reported with the
+  # exact mechanism by @SamuelOshin (#44).
   local found=0 ref br
-  for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
-    br="${ref#origin/}"
+  for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+    br="${ref#refs/remotes/origin/}"
     git show "$ref:.vscode/tasks.json" 2>/dev/null | _qmatch folderOpen \
       && { red "  [$br] .vscode/tasks.json runOn:folderOpen"; found=1; }
     local m; m="$(git grep -InE "$pattern" "$ref" -- 2>/dev/null | head -3)"
@@ -513,10 +602,25 @@ cmd_fix(){
       git remote set-url origin "https://github.com/$repo.git"
     if [ "$push" = 1 ]; then
       ylw "  force-pushing rewritten history (refs/heads only)"
-      local r
+      # `git push ... | tail -2` discards the exit status: a 443 timeout
+      # printed its error into the pipe and the purge reported success while
+      # the rewritten history had not left the machine. Reported in #44.
+      local r po pushfail=0
       for r in $(git for-each-ref --format='%(refname)' refs/heads); do
-        GIT_TERMINAL_PROMPT=0 git push --force origin "$r:$r" 2>&1 | tail -2
+        if po="$(GIT_TERMINAL_PROMPT=0 git push --force origin "$r:$r" 2>&1)"; then
+          [ -n "$po" ] && echo "$po" | tail -2 | sed 's/^/      /'
+        else
+          pushfail=1
+          red "  push FAILED: $r"
+          echo "$po" | tail -3 | sed 's/^/      /'
+        fi
       done
+      if [ "$pushfail" = 1 ]; then
+        red "  History was rewritten LOCALLY but is NOT published. The remote still"
+        red "  carries the payload. Re-run the push once the network is back:"
+        dim "    cd $src && git push --force --all origin"
+        return 1
+      fi
       red "  Collaborators MUST re-clone. Forks, PR refs and old SHAs still hold it —"
       red "  ask GitHub Support to garbage-collect unreachable objects."
     else ylw "  rewritten locally, not pushed. Inspect: cd $src"; fi
@@ -524,8 +628,8 @@ cmd_fix(){
   fi
 
   hdr "4. Clean branch tips"
-  for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v HEAD); do
-    br="${ref#origin/}"
+  for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin | grep -v '/HEAD$'); do
+    br="${ref#refs/remotes/origin/}"
     git checkout -q -B "$br" "$ref" 2>/dev/null || continue
     if _fix_clean_tree "$br" "$pattern"; then
       git commit -q -m "security: remove supply-chain malware dropper
@@ -533,7 +637,15 @@ cmd_fix(){
 Found by snare. Files the project needs (build configs, package.json) were
 stripped of the payload and kept; files that were payload only were removed.
 See the security issue on this repository for detail."
-      [ "$push" = 1 ] && GIT_TERMINAL_PROMPT=0 git push -q origin "$br" && grn "  [$br] pushed"
+      if [ "$push" = 1 ]; then
+        local tp
+        if tp="$(GIT_TERMINAL_PROMPT=0 git push origin "$br" 2>&1)"; then
+          grn "  [$br] pushed"
+        else
+          red "  [$br] push FAILED — cleaned locally, NOT published:"
+          echo "$tp" | tail -3 | sed 's/^/      /'
+        fi
+      fi
     fi
   done
   [ "$push" = 0 ] && ylw "  not pushed (add --push)"

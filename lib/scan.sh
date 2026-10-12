@@ -63,12 +63,35 @@ try: d=json.load(open(sys.argv[1]))
 except Exception: sys.exit(0)
 s=d.get("scripts") or {}
 BAD=re.compile(r"node\s+.*(-e|--eval)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(",re.I)
-for k in ("preinstall","install","postinstall","prepare","prepublish"):
+HOOKS=("preinstall","install","postinstall","prepare","prepublish")
+for k in HOOKS:
     v=s.get(k)
     if v: print(("HIGH" if BAD.search(str(v)) else "INFO"), "%s: %s"%(k,v))
+# Run-script hijack, campaign 4738-2. package.json keeps every script it had
+# and gains a `node api.js &&` prefix, so `npm run dev` runs the loader on a
+# machine that never ran `npm install`. --ignore-scripts does not help: these
+# are not install hooks. The shape alone is an ordinary build step, so what
+# decides is whether the file being run is itself obfuscated.
+import os
+def shady(path):
+    try:
+        if os.path.getsize(path) > 4000000: return "%d bytes" % os.path.getsize(path)
+        b=open(path,"rb").read()
+    except Exception: return None
+    if max((len(l) for l in b.split(b"\n")), default=0) > 5000:
+        return "one line over 5000 chars"
+    if b.count(b"_0x") > 8: return "hex-escaped identifier array (_0x..)"
+    if re.search(rb"global[ \t]*\[", b): return "assigns global[..]"
+    return None
+root=os.path.dirname(os.path.abspath(sys.argv[1]))
+for k,v in s.items():
+    if k in HOOKS: continue
+    for t in re.findall(r"\bnode\s+(?:--[\w=-]+\s+)*([\w./-]+\.[cm]?js)\b", str(v)):
+        why=shady(os.path.join(root,t))
+        if why: print("HIGH", "%s runs %s - %s" % (k,t,why))
 ' "$pj" 2>/dev/null)"
       [ -z "$h" ] && continue
-      echo "$h" | _qmatch '^HIGH' && { _hit "$pj suspicious install hook:"; echo "$h" | grep '^HIGH' | sed 's/^HIGH/      /'; }
+      echo "$h" | _qmatch '^HIGH' && { _hit "$pj runs code without being asked:"; echo "$h" | grep '^HIGH' | sed 's/^HIGH/      /'; }
       echo "$h" | _qmatch '^INFO' && dim "      $pj: $(echo "$h" | grep '^INFO' | sed 's/^INFO //' | tr '\n' ';')"
     done < <(find . -name package.json -not -path "*/node_modules/*" 2>/dev/null | head -40)
 
@@ -84,6 +107,53 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
       grep -qE "postCreateCommand|postStartCommand|onCreateCommand|initializeCommand" "$d" 2>/dev/null \
         && _hit "$d defines a devcontainer lifecycle command"
     done < <(find . -name devcontainer.json -not -path "*/node_modules/*" 2>/dev/null)
+
+    # An AI coding agent's own config is an execution vector, and nothing was
+    # reading it. ChainDrop's persistence is a SessionStart hook in
+    # .claude/settings.json that runs a dropper every time a session opens:
+    # it survives removing the package that delivered it, npm never sees it,
+    # and the two copies (.claude/setup.mjs and .vscode/setup.mjs) re-create
+    # each other, so removing one directory fixes nothing. Hooks are a real
+    # feature — snare ships a plugin itself — so the command decides, not the
+    # presence of a hook.
+    local ac ah
+    while IFS= read -r ac; do
+      [ -z "$ac" ] && continue
+      ah="$(python3 -c '
+import json,re,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: sys.exit(0)
+BAD=re.compile(r"setup\.mjs|math_init|Math_Symbol|node\s+[.]?/?[.](vscode|claude|cursor|kilo)/|node\s+.*(-e|--eval)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(|Invoke-WebRequest|EncodedCommand",re.I)
+def walk(o,ev=None):
+    if isinstance(o,dict):
+        for k,v in o.items():
+            if k=="command" and isinstance(v,str) and v.strip():
+                print(("HIGH" if BAD.search(v) else "INFO"), "%s: %s"%(ev or "hook", v[:160]))
+            else:
+                walk(v, k if (isinstance(k,str) and k[:1].isupper()) else ev)
+    elif isinstance(o,list):
+        for v in o: walk(v,ev)
+h=d.get("hooks")
+if h is not None: walk(h)
+' "$ac" 2>/dev/null)"
+      [ -z "$ah" ] && continue
+      if echo "$ah" | _qmatch "^HIGH"; then
+        _hit "$ac — an agent hook runs a dropper, on its own, every session:"
+        echo "$ah" | grep "^HIGH" | sed "s/^HIGH/      /"
+      else
+        _note "$ac defines agent hooks — they run without you typing anything:"
+        echo "$ah" | grep "^INFO" | sed "s/^INFO/      /" | head -6
+      fi
+    done < <(find . \( -path "*/.claude/settings*.json" -o -path "*/.cursor/*settings*.json" \
+                    -o -path "*/.gemini/settings*.json" -o -path "*/.codex/*settings*.json" \) \
+             -not -path "*/node_modules/*" 2>/dev/null | head -20)
+
+    # The dropper pair itself, named the same way in every vendor write-up.
+    local dr
+    for dr in .claude/setup.mjs .vscode/setup.mjs .claude/math_init.js \
+              .claude/Math_Symbol.js .vscode/math_init.js; do
+      [ -f "$dr" ] && _hit "$dr — ChainDrop dropper artefact (see snare respond)"
+    done
 
     [ -d .husky ] && { _hit ".husky/ present (runs on git operations)"; ls -1 .husky | sed 's/^/        /'; }
     for hook in .git/hooks/*; do
@@ -117,7 +187,9 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
       [ -z "$f" ] && continue
       # Compare as hex: bash cannot hold NUL, so the TrueType magic
       # 00 01 00 00 can never match as a literal string.
-      if ! is_font "$f"; then
+      if [ ! -s "$f" ]; then
+        _hit "$f is 0 bytes — a placeholder the dropper's task will overwrite"; bad=1
+      elif ! is_font "$f"; then
         _hit "$f is not a real font (no wOF2/OTTO magic) — likely a payload"; bad=1
       fi
     done < <(find . \( -name '*.woff2' -o -name '*.woff' -o -name '*.ttf' -o -name '*.otf' \) \
@@ -183,7 +255,16 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
         -not -path "*/.svelte-kit/*" -not -path "*/.output/*" -not -path "*/.vercel/*" \
         -not -path "*/.cache/*" -not -path "*/coverage/*" 2>/dev/null | head -400 \
         | { [ "$SELF" = 1 ] && grep -v '/lib/\|/bin/\|/docs/\|/promo/' || cat; } )"
-    hid="$(printf '%s\n' "$files" | xargs grep -lE '[^[:space:]][[:space:]]{50,}[^[:space:]]' 2>/dev/null | head -20)"
+    # A line whose first non-space character is `*`, `//` or `#` is inside a
+    # comment, so whatever follows the whitespace run cannot execute — and
+    # aligned prose in a block comment produced the run. Measured on a real
+    # project: 5 findings, all of them ` *     exit 0` inside a doc comment,
+    # which is exactly how a scanner teaches people to ignore it. Matching
+    # lines are filtered, then the file names are collected.
+    hid="$(printf '%s\n' "$files" \
+        | xargs grep -nE '[^[:space:]][[:space:]]{50,}[^[:space:]]' 2>/dev/null \
+        | grep -vE '^[^:]*:[0-9]+:[[:space:]]*(\*|//|#)' \
+        | cut -d: -f1 | sort -u | head -20)"
     lng="$(printf '%s\n' "$files" | xargs awk 'length > 1500 {print "LONG "FILENAME" line "FNR" ("length" chars)"; nextfile}' 2>/dev/null | head -20)"
     local anyhit=0
     if [ -n "$hid" ]; then
@@ -211,6 +292,40 @@ for k in ("preinstall","install","postinstall","prepare","prepublish"):
         local c; c="$(git log --all --oneline -S"$pat" --pickaxe-regex 2>/dev/null | head -3)"
         [ -n "$c" ] && { _hit "'$pat' appears in history:"; echo "$c" | sed 's/^/        /'; }
       done < <(ioc_list)
+
+      # Forged force-push (campaign 4738-2, reported in #47). The remote tip
+      # is rewritten carrying the real commit's subject, author and author
+      # date, so the incoming commit reads exactly like the one you pushed.
+      # Git shows "1 ahead, 1 behind" with identical messages, VS Code's sync
+      # counter makes that look harmless, and the next pull merges the forged
+      # tip. What the forgery does not reproduce is the committer: the hash
+      # differs and the committer timezone flips to -0800/-0700.
+      local up
+      up="$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null)"
+      if [ -n "$up" ] && git rev-parse --verify --quiet "$up" >/dev/null 2>&1; then
+        local forged
+        forged="$(awk -F'\t' '
+          NR==FNR { k=$1 FS $2; tz[k]=substr($3,length($3)-5); h[k]=$4; next }
+          { k=$1 FS $2; mine=substr($3,length($3)-5)
+            # The timezone must differ. A local amend or rebase also produces
+            # the same subject and author date under a new hash, and that is
+            # ordinary work — but it was committed in your own timezone on
+            # both sides. The forgery flips it to -0800/-0700.
+            if ((k in h) && h[k] != $4 && tz[k] != mine)
+              printf "%s\t%s\t%s\n", $1, tz[k], mine }' \
+          <(git log --format="%s%x09%at%x09%cI%x09%H" "HEAD..$up" 2>/dev/null) \
+          <(git log --format="%s%x09%at%x09%cI%x09%H" "$up..HEAD" 2>/dev/null) \
+          2>/dev/null | head -5)"
+        if [ -n "$forged" ]; then
+          _hit "$up has been rewritten: a commit of yours comes back with the same"
+          red  "      message and author date under a different hash. Do NOT pull."
+          while IFS="$(printf '\t')" read -r _sub _rtz _ltz; do
+            [ -z "$_sub" ] && continue
+            red "      \"$(echo "$_sub" | cut -c1-70)\"  committed $_rtz upstream, $_ltz locally"
+          done <<< "$forged"
+          dim "      Compare for yourself: git log --format='%H %cI %s' HEAD..@{u}"
+        fi
+      fi
     fi
 
     local n

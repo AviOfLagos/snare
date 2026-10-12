@@ -63,6 +63,31 @@ _doctor_npm_roots(){
            /opt/homebrew/lib/node_modules/npm; do
     [ -d "$d" ] && printf '%s\n' "$d"
   done
+  # Windows. Every Windows host got "no npm installation found to check" (#46):
+  # the loop above is the Unix layout, lib/node_modules/npm, and Windows keeps
+  # the global prefix flat at %APPDATA%\npm\node_modules\npm. That is also the
+  # copy that RUNS. The npm and npx shims prefer a global-prefix install over
+  # the one bundled in Program Files, so a single `npm i -g npm` — common —
+  # makes the %APPDATA% copy the live one, and `npm --version` reports it.
+  # Checking Program Files alone would still have missed the live infection.
+  # npm is never run to ask `npm prefix -g`: running npm is what executes the
+  # loader on an infected host.
+  local ad
+  for ad in "${APPDATA:-}" "${LOCALAPPDATA:-}"; do
+    [ -n "$ad" ] || continue
+    case "$ad" in
+      [A-Za-z]:[\\/]*) command -v cygpath >/dev/null 2>&1 && ad="$(cygpath -u "$ad" 2>/dev/null)" ;;
+    esac
+    [ -n "$ad" ] && [ -d "$ad/npm/node_modules/npm" ] && printf '%s\n' "$ad/npm/node_modules/npm"
+  done
+  for d in "$HOME/AppData/Roaming/npm/node_modules/npm" \
+           "$HOME/AppData/Local/npm/node_modules/npm" \
+           "/c/Program Files/nodejs/node_modules/npm" \
+           "/c/Program Files (x86)/nodejs/node_modules/npm" \
+           "$HOME/scoop/apps/nodejs/current/node_modules/npm" \
+           "$HOME/scoop/apps/nodejs-lts/current/node_modules/npm"; do
+    [ -d "$d" ] && printf '%s\n' "$d"
+  done
 }
 
 # The package manager is a file like any other, and nothing was checking it.
@@ -77,6 +102,22 @@ _doctor_node(){
     seen=1
     while IFS= read -r f; do
       [ -z "$f" ] || [ ! -f "$f" ] && continue
+      # Size first, because it catches this without knowing the malware at
+      # all. npm's entry points are tiny in every genuine release: 407 bytes
+      # measured here, 419 on the reference Windows host. The two reported
+      # infections were 503,857 and 1,332,948 bytes. Suggested in #46.
+      local sz; sz="$(wc -c < "$f" 2>/dev/null | tr -d ' ')"
+      case "$f" in
+        */lib/cli.js|*/bin/npm-cli.js|*/bin/npx-cli.js)
+          if [ -n "$sz" ] && [ "$sz" -gt 4096 ]; then
+            red "  [!] $f — $sz bytes; a genuine copy is under 1 KB"; found=1; continue
+          fi ;;
+      esac
+      # One enormous line is the other shape of the same thing: 1,332,540
+      # characters on one line in the reported sample.
+      if awk 'length($0)>10000 { exit 0 } END { exit 1 }' "$f" 2>/dev/null; then
+        red "  [!] $f — a single line over 10,000 characters"; found=1; continue
+      fi
       if grep -qE '[^[:space:]][[:space:]]{50,}[^[:space:]]' "$f" 2>/dev/null; then
         red "  [!] $f — code hidden past a run of whitespace"; found=1
       elif grep -qE "$pattern" "$f" 2>/dev/null; then

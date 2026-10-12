@@ -173,6 +173,12 @@ magic4(){ head -c 4 "$1" 2>/dev/null | od -An -v -tx1 2>/dev/null | tr -d ' \n';
 # "Undeterminable" deliberately counts as fine: refusing to guess beats
 # accusing a user's assets because a tool was missing.
 is_font(){
+  # An empty file is not a font. `[ -z "$m" ] && return 0` used to say it was,
+  # because magic4 returns nothing for a file with no bytes to read — so a
+  # dropper committed as a 0-byte public/fonts/fa-solid-500.woff2 was reported
+  # as a legitimate font and `fix` left it in place, along with the
+  # folderOpen task that ran it. Reported by @SamuelOshin (#44).
+  [ -s "$1" ] || return 1
   local m; m="$(magic4 "$1")"
   [ -z "$m" ] && return 0
   case "$m" in
