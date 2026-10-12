@@ -75,6 +75,14 @@ def parse(md: str):
                    "lede": "", "groups": []}
             releases.append(cur); group = None
             continue
+        # A `## ` heading that is not a release — `## [Unreleased]` was the
+        # real case — used to be ignored, so every group under it was folded
+        # into the release ABOVE it and the site showed 1.2.0's content under
+        # 1.3.0. Silent folding is exactly the drift this script exists to
+        # prevent, so it is an error now and CI fails on it.
+        if line.startswith("## "):
+            sys.exit("changelog-gen: %r is not a release heading. Use "
+                     "`## [x.y.z] — date`; there is no Unreleased section." % line)
         if cur is None:
             continue
         m = re.match(r"^### (.+)$", line)

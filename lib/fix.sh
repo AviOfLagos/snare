@@ -5,54 +5,8 @@
 # ONE definition of what a payload is and how to take it out, shared by tip
 # cleaning and history purging. Those two used to carry separate copies that
 # had drifted apart, and only one of them was ever reached.
-# Shared by the tasks cleaner and the history blob cleaner: VS Code reads
-# tasks.json as JSONC, so real files carry // comments, /* */ blocks and a
-# trailing comma before the closing bracket. json.loads rejects all three, and
-# the caller read "cannot parse" as "nothing legitimate in it" and deleted the
-# file — so a project with honest build tasks plus one injected folderOpen task
-# lost every task it had. Reported by @SamuelOshin (#44).
-_fix_jsonc_core(){
-  cat <<'PY'
-import json, re
-
-def jsonc(data):
-    """JSONC -> JSON text. Comments and trailing commas out, strings intact."""
-    s = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
-    out, i, n = [], 0, len(s)
-    instr = esc = False
-    while i < n:
-        c = s[i]
-        if instr:
-            out.append(c)
-            if esc:         esc = False
-            elif c == chr(92): esc = True
-            elif c == '"':  instr = False
-            i += 1; continue
-        if c == '"':
-            instr = True; out.append(c); i += 1; continue
-        if c == "/" and i + 1 < n and s[i + 1] == "/":
-            while i < n and s[i] != chr(10):
-                i += 1
-            continue
-        if c == "/" and i + 1 < n and s[i + 1] == "*":
-            i += 2
-            while i + 1 < n and not (s[i] == "*" and s[i + 1] == "/"):
-                i += 1
-            i += 2; continue
-        out.append(c); i += 1
-    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
-
-def jsonc_load(data):
-    try:
-        return json.loads(data if isinstance(data, str)
-                          else data.decode("utf-8", "replace"))
-    except Exception:
-        return json.loads(jsonc(data))
-PY
-}
-
 _fix_strip_core(){
-  _fix_jsonc_core
+  snare_jsonc_py
   cat <<'PY'
 import re
 
@@ -94,10 +48,21 @@ def _dense(ln):
 # folderOpen task sitting in history (reported in #44). Content identifies it
 # well enough: a JSON object with a tasks array containing runOn: folderOpen
 # is not something else.
-FOPEN = re.compile(rb'"runOn"\s*:\s*"folderOpen"', re.I)
+# The gate is "could this be a tasks.json", never "do these bytes say
+# folderOpen". A byte test is bypassed by a JSON escape: VS Code resolves
+# \u0066olderOpen and runs the task, and a grep for the word finds nothing.
+# Everything after the parse compares resolved strings, case-insensitively.
+def _is_folder_open(task):
+    if not isinstance(task, dict):
+        return False
+    ro = task.get("runOptions")
+    if not isinstance(ro, dict):
+        return False
+    return any(str(k).lower() == "runon" and str(v).lower() == "folderopen"
+               for k, v in ro.items())
 
 def clean_tasks(data):
-    if not FOPEN.search(data):
+    if b'"tasks"' not in data or len(data) > 1000000:
         return None
     try:
         d = jsonc_load(data)
@@ -106,9 +71,7 @@ def clean_tasks(data):
             return None
     except Exception:
         return None
-    kept = [t for t in tasks
-            if not (isinstance(t, dict) and str((t.get("runOptions") or {})
-                    .get("runOn", "")).lower() == "folderopen")]
+    kept = [t for t in tasks if not _is_folder_open(t)]
     if len(kept) == len(tasks):
         return None
     d["tasks"] = kept
@@ -207,7 +170,7 @@ PY
 # that runs on folderOpen and keep the rest, rather than deleting someone's
 # build and test tasks along with the malicious one.
 _fix_tasks_prog(){
-  _fix_jsonc_core
+  snare_jsonc_py
   cat <<'PY'
 import sys
 p = sys.argv[1]

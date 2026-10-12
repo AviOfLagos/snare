@@ -95,6 +95,55 @@ snare_grep_tree(){
   esac
 }
 
+# Emits a python helper used wherever snare reads an editor or agent config.
+# Two reasons it exists, both of them bypasses that were measured:
+#
+# 1. Those files are JSONC: VS Code reads
+# tasks.json as JSONC, so real files carry // comments, /* */ blocks and a
+# trailing comma before the closing bracket. json.loads rejects all three, and
+# the caller read "cannot parse" as "nothing legitimate in it" and deleted the
+# file — so a project with honest build tasks plus one injected folderOpen task
+# lost every task it had. Reported by @SamuelOshin (#44).
+snare_jsonc_py(){
+  cat <<'PY'
+import json, re
+
+def jsonc(data):
+    """JSONC -> JSON text. Comments and trailing commas out, strings intact."""
+    s = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
+    out, i, n = [], 0, len(s)
+    instr = esc = False
+    while i < n:
+        c = s[i]
+        if instr:
+            out.append(c)
+            if esc:         esc = False
+            elif c == chr(92): esc = True
+            elif c == '"':  instr = False
+            i += 1; continue
+        if c == '"':
+            instr = True; out.append(c); i += 1; continue
+        if c == "/" and i + 1 < n and s[i + 1] == "/":
+            while i < n and s[i] != chr(10):
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and s[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (s[i] == "*" and s[i + 1] == "/"):
+                i += 1
+            i += 2; continue
+        out.append(c); i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+def jsonc_load(data):
+    try:
+        return json.loads(data if isinstance(data, str)
+                          else data.decode("utf-8", "replace"))
+    except Exception:
+        return json.loads(jsonc(data))
+PY
+}
+
 need(){ command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installed"; }
 
 # Auth is ALWAYS the caller's own — snare never ships or stores a token.

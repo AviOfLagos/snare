@@ -5,6 +5,61 @@ FF=""
 _hit(){ echo x >> "$FF"; red "  [!] $*"; }
 _note(){ ylw "  [~] $*"; }
 
+# The hook walker, emitted rather than inlined: the python contains double
+# quotes, so it cannot live inside a double-quoted command substitution.
+_scan_hooks_py(){
+  snare_jsonc_py
+  cat <<'PYB'
+import sys
+BAD=re.compile(r"setup\.mjs|math_init|Math_Symbol|node\s+[.]?/?[.](vscode|claude|cursor|kilo)/|node\s+.*(-e|--eval)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(|Invoke-WebRequest|EncodedCommand",re.I)
+def walk(o,ev=None):
+    if isinstance(o,dict):
+        for k,v in o.items():
+            if k=="command" and isinstance(v,str) and v.strip():
+                print(("HIGH" if BAD.search(v) else "INFO"), "%s: %s"%(ev or "hook", v[:160]))
+            else:
+                walk(v, k if (isinstance(k,str) and k[:1].isupper()) else ev)
+    elif isinstance(o,list):
+        for v in o: walk(v,ev)
+try:
+    d = jsonc_load(open(sys.argv[1], 'rb').read())
+except Exception:
+    # Silence here was a bypass: a settings.json carrying one comment threw,
+    # the check exited 0, and a SessionStart dropper went unreported while the
+    # agent still ran it. An unparseable config is a finding of its own.
+    print('HIGH', 'unparseable: read this file by hand')
+    raise SystemExit
+h = d.get('hooks') if isinstance(d, dict) else None
+if h is not None: walk(h)
+PYB
+}
+
+# The tasks.json checker, for the same reason.
+_scan_tasks_py(){
+  snare_jsonc_py
+  cat <<'PYB'
+import sys
+try:
+    d = jsonc_load(open(sys.argv[1], 'rb').read())
+except Exception as e:
+    print('UNPARSEABLE'); raise SystemExit
+tasks = d.get('tasks') if isinstance(d, dict) else None
+if not isinstance(tasks, list):
+    raise SystemExit
+for t in tasks:
+    if not isinstance(t, dict):
+        continue
+    ro = t.get('runOptions') or {}
+    if not isinstance(ro, dict):
+        continue
+    for k, v in ro.items():
+        if str(k).lower() == 'runon' and str(v).lower() == 'folderopen':
+            print('FOLDEROPEN\t%s\t%s' % (t.get('label', '(unlabelled)'),
+                                           str(t.get('command', ''))[:120]))
+PYB
+}
+
+
 # ---------------------------------------------------------------- local repo
 cmd_scan_repo(){
   local repo="${1:-$PWD}" pattern out art
@@ -95,11 +150,24 @@ for k,v in s.items():
       echo "$h" | _qmatch '^INFO' && dim "      $pj: $(echo "$h" | grep '^INFO' | sed 's/^INFO //' | tr '\n' ';')"
     done < <(find . -name package.json -not -path "*/node_modules/*" 2>/dev/null | head -40)
 
+    # `grep -q folderOpen` was the gate here, and a JSON escape walked
+    # straight past it: VS Code resolves "\u0066olderOpen" to folderOpen and
+    # runs the task, while the grep sees no such bytes. Measured — the file
+    # below was executed and reported nothing. So the verdict comes from the
+    # parsed structure, and a config that cannot be parsed at all is reported
+    # rather than passed over.
+    local t tv
     while IFS= read -r t; do
       [ -z "$t" ] && continue
-      grep -q folderOpen "$t" 2>/dev/null && {
-        _hit "$t uses runOn:folderOpen — executes on opening the repo in VS Code"
-        grep -n -B2 -A2 folderOpen "$t" | sed 's/^/        /' | head -12; }
+      tv="$(python3 -c "$(_scan_tasks_py)" "$t" 2>/dev/null)"
+      case "${tv%%	*}" in
+        FOLDEROPEN)
+          _hit "$t uses runOn:folderOpen — executes on opening the repo in VS Code"
+          printf '%s\n' "$tv" | sed 's/^FOLDEROPEN\t/        task: /; s/\t/  ->  /' ;;
+        UNPARSEABLE)
+          _hit "$t cannot be parsed — VS Code is more tolerant than any parser here, so read it by hand"
+          grep -nE 'runOn|folderOpen|command' "$t" 2>/dev/null | head -6 | sed 's/^/        /' ;;
+      esac
     done < <(find . -path "*/.vscode/tasks.json" -not -path "*/node_modules/*" 2>/dev/null)
 
     while IFS= read -r d; do
@@ -119,23 +187,7 @@ for k,v in s.items():
     local ac ah
     while IFS= read -r ac; do
       [ -z "$ac" ] && continue
-      ah="$(python3 -c '
-import json,re,sys
-try: d=json.load(open(sys.argv[1]))
-except Exception: sys.exit(0)
-BAD=re.compile(r"setup\.mjs|math_init|Math_Symbol|node\s+[.]?/?[.](vscode|claude|cursor|kilo)/|node\s+.*(-e|--eval)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(|Invoke-WebRequest|EncodedCommand",re.I)
-def walk(o,ev=None):
-    if isinstance(o,dict):
-        for k,v in o.items():
-            if k=="command" and isinstance(v,str) and v.strip():
-                print(("HIGH" if BAD.search(v) else "INFO"), "%s: %s"%(ev or "hook", v[:160]))
-            else:
-                walk(v, k if (isinstance(k,str) and k[:1].isupper()) else ev)
-    elif isinstance(o,list):
-        for v in o: walk(v,ev)
-h=d.get("hooks")
-if h is not None: walk(h)
-' "$ac" 2>/dev/null)"
+      ah="$(python3 -c "$(_scan_hooks_py)" "$ac" 2>/dev/null)"
       [ -z "$ah" ] && continue
       if echo "$ah" | _qmatch "^HIGH"; then
         _hit "$ac — an agent hook runs a dropper, on its own, every session:"
@@ -331,8 +383,17 @@ if h is not None: walk(h)
     local n
   n="$(wc -l < "$FF" | tr -d ' ')"
     hdr "RESULT"
-    if [ "${n:-0}" -eq 0 ]; then grn "No IOC matches."; exit 0
-    else red "$n finding(s). Do NOT run 'npm install' or open this repo in an editor until cleaned."; exit 1; fi
+    if [ "${n:-0}" -eq 0 ]; then
+      grn "No IOC matches."
+      # A clean verdict from an outdated scanner is the one output that stops
+      # someone looking further, so it carries the caveat. Cache only — no
+      # network on this path.
+      snare_update_stale_note
+      exit 0
+    else
+      red "$n finding(s). Do NOT run 'npm install' or open this repo in an editor until cleaned."
+      exit 1
+    fi
   )
 }
 

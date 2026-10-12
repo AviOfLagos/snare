@@ -88,10 +88,17 @@ UPDATE_CACHE="$SNARE_HOME/update-state"
 
 # Refresh the cache. Runs detached; never writes to the terminal.
 snare_update_refresh(){
-  [ -d "$SNARE_ROOT/.git" ] || return 0
-  local remote local_sha behind
+  local remote local_sha behind="" rv=""
+  # A zip or tarball install has no .git, so commit distance does not exist —
+  # and this function used to return here, which meant those users were never
+  # told anything at all, ever. The version in the remote's bin/snare is the
+  # one signal that works without a repository, so it is recorded either way.
+  rv="$(snare_remote_version 2>/dev/null)"
+  if [ ! -d "$SNARE_ROOT/.git" ]; then
+    _snare_update_write "" "$rv"; return 0
+  fi
   remote="$(git -C "$SNARE_ROOT" ls-remote origin HEAD 2>/dev/null | cut -f1)"
-  [ -z "$remote" ] && return 0
+  [ -z "$remote" ] && { _snare_update_write "" "$rv"; return 0; }
   local_sha="$(git -C "$SNARE_ROOT" rev-parse HEAD 2>/dev/null)"
   if [ "$remote" = "$local_sha" ]; then
     behind=0
@@ -103,10 +110,51 @@ snare_update_refresh(){
     behind="$(git -C "$SNARE_ROOT" rev-list --count HEAD..origin/main 2>/dev/null)"
     [ -z "$behind" ] && behind=1
   fi
+  _snare_update_write "$behind" "$rv"
+}
+
+# One writer, so every path above leaves a usable cache behind.
+_snare_update_write(){
   mkdir -p "$SNARE_HOME" 2>/dev/null
-  printf 'checked=%s
-behind=%s
-' "$(date +%s)" "$behind" > "$UPDATE_CACHE.tmp" 2>/dev/null     && mv "$UPDATE_CACHE.tmp" "$UPDATE_CACHE" 2>/dev/null
+  printf 'checked=%s\nbehind=%s\nremote_version=%s\n' \
+    "$(date +%s)" "${1:-}" "${2:-}" > "$UPDATE_CACHE.tmp" 2>/dev/null \
+    && mv "$UPDATE_CACHE.tmp" "$UPDATE_CACHE" 2>/dev/null
+}
+
+# What a given version MISSES. "You are behind" does not tell anyone whether
+# it matters; every entry here is a release that fixed a case where snare
+# reported a repository clean while it was infected, which is the one failure
+# that makes the tool worse than not running it.
+snare_update_risk(){
+  local v="${1:-$SNARE_VERSION}"
+  if ver_gt 1.4.0 "$v"; then
+    dim "  Before 1.4.0 a repository could run a payload on every \`npm run dev\`"
+    dim "  and re-drop it at every editor session, and snare reported it clean."
+  elif ver_gt 1.3.2 "$v"; then
+    dim "  Before 1.3.2 false positives could push a real finding past the cap."
+  elif ver_gt 1.1.0 "$v"; then
+    dim "  Before 1.1.0 four defects could report a repository clean when it was not."
+  fi
+}
+
+# For callers that print a verdict: a clean result from an outdated scanner is
+# the dangerous combination, so this is NOT gated on being a terminal — a
+# report written to a file or a CI log needs to carry the caveat too.
+snare_update_stale_note(){
+  [ -n "${SNARE_NO_UPDATE_CHECK:-}" ] && return 0
+  [ -f "$UPDATE_CACHE" ] || return 0
+  local b rv
+  b="$(grep -m1 '^behind=' "$UPDATE_CACHE" 2>/dev/null | cut -d= -f2)"
+  rv="$(grep -m1 '^remote_version=' "$UPDATE_CACHE" 2>/dev/null | cut -d= -f2)"
+  if [ -n "$b" ] && [ "$b" -gt 0 ] 2>/dev/null; then
+    ylw "  This result came from a snare that is $b commit(s) behind."
+  elif [ -n "$rv" ] && ver_gt "$rv" "$SNARE_VERSION"; then
+    ylw "  This result came from snare $SNARE_VERSION; $rv is available."
+  else
+    return 0
+  fi
+  snare_update_risk
+  dim "  Re-check with a current one: snare update && snare scan repo"
 }
 
 # Read the cached answer, print at most one line, and kick off a refresh in the
@@ -127,10 +175,18 @@ snare_update_nudge(){
   [ -z "$behind" ] && behind=0
   age=$(( now - checked ))
 
+  local rv
+  rv="$(grep -m1 '^remote_version=' "$UPDATE_CACHE" 2>/dev/null | cut -d= -f2)"
   if [ "$behind" -gt 0 ] 2>/dev/null; then
     echo
     ylw "  snare is $behind commit(s) behind — run: snare update"
-    dim  "  Versions before 1.1.0 could report a repository clean when it was not."
+    snare_update_risk
+  elif [ -n "$rv" ] && ver_gt "$rv" "$SNARE_VERSION"; then
+    # No git checkout, so there is no commit distance — but the version alone
+    # is enough to say something true.
+    echo
+    ylw "  snare $rv is available (you have $SNARE_VERSION) — run: snare update"
+    snare_update_risk
   fi
 
   # Stale (or never checked): try to refresh for next time, fully detached —
