@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.2.0">v1.2.0</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.4.0">v1.4.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -95,6 +95,36 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 </section>
 
 <section class="stack" id="open">
+  <span class="eyebrow">Credit</span>
+  <h2>Who found what</h2>
+  <p class="lede">Every detection snare has for this campaign came from someone finding it on their
+  own machine first and writing up what they saw. None of it was found by reading code.</p>
+  <ol class="chain">
+    <li><b><a href="https://github.com/kleenpulse">@kleenpulse</a> — campaign 4738-2, from a live
+    Windows host</b><span>The patched <code>cli.js</code> Defender did not flag, the PowerShell
+    clipboard stealer, the <code>api.js</code> wired into the run scripts, and the forged
+    force-pushes that read as <code>1 ahead, 1 behind</code> with identical messages. Snare now
+    detects all four, and the forged-push check is a direct implementation of the method in that
+    report. <a href="https://github.com/AviOfLagos/snare/issues/47">#47</a></span></li>
+    <li><b><a href="https://github.com/ibraheembello">@ibraheembello</a> — npm on Windows was
+    never checked</b><span><code>snare doctor</code> printed <em>no npm installation found to
+    check</em> on every Windows host while a trojanised <code>cli.js</code> sat in
+    <code>%APPDATA%\npm</code> and ran on every command. Also suggested the size heuristic that
+    now catches this without knowing the malware at all.
+    <a href="https://github.com/AviOfLagos/snare/issues/46">#46</a></span></li>
+    <li><b><a href="https://github.com/SamuelOshin">@SamuelOshin</a> — four remediation
+    bugs</b><span>A 0-byte fake font that <code>fix</code> skipped, a <code>tasks.json</code> with
+    comments that <code>fix</code> deleted whole, a phantom <code>origin</code> branch pushed to
+    the remote, and a failed push reported as a success. All four reproduced exactly as described.
+    <a href="https://github.com/AviOfLagos/snare/issues/44">#44</a></span></li>
+    <li><b><a href="https://github.com/phoenixdahdev">@phoenixdahdev</a> — remediation deleted the
+    files it was meant to clean</b><span><code>snare fix</code> removed build configs instead of
+    stripping them, so the fix was its own outage.
+    <a href="https://github.com/AviOfLagos/snare/pull/39">#39</a></span></li>
+  </ol>
+</section>
+
+<section class="stack" id="open">
   <span class="eyebrow">Still unanswered</span>
   <h2>The two questions nobody has answered</h2>
   <p class="lede">These are not rhetorical. Nine infections across five contributor identities over
@@ -105,7 +135,12 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
     out a contaminated template as the whole story. A shared upstream source (a scaffold, a
     <code>create-*</code> command, a downloaded theme, an editor extension) is the leading theory
     and remains unproven. If you can say what you scaffolded an infected project with, that is the
-    most useful thing you can contribute.</span></li>
+    most useful thing you can contribute. <b>One concrete chain is now on record</b>
+    (<a href="https://github.com/AviOfLagos/snare/issues/47">#47</a>): an IDE language server ran
+    <code>npx -y chrome-devtools-mcp@latest</code>, which went through the already-patched npm in
+    the global prefix. That explains how the payload keeps <em>running</em> — including from
+    MCP servers an editor starts on its own — but not how it got onto that machine to begin
+    with.</span></li>
     <li><b>Can a defence propagate the way the infection does?</b><span>Without becoming a dropper
     itself. This is an open design question, and a genuinely uncomfortable one.</span></li>
   </ol>
@@ -179,7 +214,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.2.0</a> · MIT</span>
+    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.4.0</a> · MIT</span>
   </div>
 </footer>
 </div>

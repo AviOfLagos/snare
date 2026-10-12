@@ -473,6 +473,41 @@ JSON
     _st_bad "the history cleaner sanitises an escaped folderOpen task"
   fi
 
+  # The same trick one level up: the KEY escaped. A gate that tests for any
+  # byte sequence a parser would resolve is the bug, not the particular word,
+  # so the gate is shape only and this proves it.
+  python3 - "$D/esc/key.json" <<'PYX'
+import sys
+# chr(92) so the file really gets a backslash, whatever quotes this passes
+# through on the way in.
+esc = chr(92) + "u0074asks"
+open(sys.argv[1], "w").write(
+    '{ "version": "2.0.0", "' + esc + '": [' + chr(10)
+    + '  { "label": "x", "command": "node evil.js",' + chr(10)
+    + '    "runOptions": { "runOn": "folderOpen" } } ] }' + chr(10))
+PYX
+  if python3 -c "$(_fix_strip_prog file)" "$D/esc/key.json" 2>/dev/null \
+       | _qmatch -E 'STRIPPED|RESIDUE'; then
+    _st_ok  "an escaped \"tasks\" key does not get past the history cleaner"
+  else
+    _st_bad "an escaped \"tasks\" key does not get past the history cleaner"
+  fi
+
+  # ...and the controls, because a shape-only gate parses more blobs.
+  local kept=0 j
+  for j in '{"name":"x","scripts":{"dev":"next dev"}}' \
+           '{"compilerOptions":{"strict":true}}' \
+           '{"version":"2.0.0","tasks":[{"label":"b","command":"npm run build"}]}'; do
+    printf '%s\n' "$j" > "$D/esc/ctl.json"
+    python3 -c "$(_fix_strip_prog file)" "$D/esc/ctl.json" 2>/dev/null \
+      | _qmatch -E '^NONE$' || kept=1
+  done
+  if [ "$kept" = 0 ]; then
+    _st_ok  "package.json, tsconfig and an honest tasks.json are left alone"
+  else
+    _st_bad "package.json, tsconfig and an honest tasks.json are left alone"
+  fi
+
   # ---- a 0-byte fake font is not a font (#44). is_font said it was, so
   #      remediation skipped it and left the dropper in place.
   if is_font "$D/bad/.vscode/empty.woff2"; then

@@ -32,7 +32,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
  {"@type":"SoftwareApplication","name":"snare",
   "applicationCategory":"SecurityApplication",
   "operatingSystem":"macOS, Linux, Windows, WSL",
-  "softwareVersion":"1.2.0",
+  "softwareVersion":"1.4.0",
   "description":"Command-line tool that detects and kills supply-chain malware loaders, scans every Git repository you can reach, removes the payload including from history, and notifies collaborators.",
   "url":"https://avioflagos.github.io/snare/","codeRepository":"https://github.com/AviOfLagos/snare",
   "license":"https://opensource.org/licenses/MIT",
@@ -49,7 +49,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.2.0">v1.2.0</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.4.0">v1.4.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html" aria-current="page">The threat</a>
       <a href="check.html">Check</a>
@@ -110,9 +110,10 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 
 <section class="stack" id="threat">
   <span class="eyebrow">The threat</span>
-  <h2>Two routes in, neither of which you'd think to check</h2>
-  <p class="lede">The same payload ships two ways. Both fire from a completely ordinary developer
-  action — which is exactly why this family works.</p>
+  <h2>Four routes in, none of which you'd think to check</h2>
+  <p class="lede">The same payload ships four ways. Every one of them fires from a completely
+  ordinary developer action — opening a folder, starting the dev server, or just beginning a
+  session with your coding assistant. That is exactly why this family works.</p>
   <div class="routes">
     <div class="route">
       <h3>Opening the folder in your editor</h3>
@@ -129,6 +130,24 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
       reads as four correct lines of config, because everything else is far off the right edge of
       the viewport.</p>
       <p class="trigger">▸ fires on <code>next dev</code> / <code>next build</code></p>
+    </div>
+    <div class="route">
+      <h3>Running any npm script</h3>
+      <p class="filename">package.json</p>
+      <p class="d">Every script you had is still there, each one now prefixed:
+      <code>"dev": "node api.js &amp;&amp; next dev"</code>. The obfuscated <code>api.js</code> sits
+      at the repository root. Nothing has to be installed for this to run, so
+      <code>--ignore-scripts</code> makes no difference — these are not install hooks.</p>
+      <p class="trigger">▸ fires on <code>npm run dev</code> / <code>build</code> / <code>start</code></p>
+    </div>
+    <div class="route">
+      <h3>Opening a session with your AI assistant</h3>
+      <p class="filename">.claude/settings.json</p>
+      <p class="d">A <code>SessionStart</code> hook runs <code>node .vscode/setup.mjs</code> every
+      time a session opens. It survives removing the package that delivered it, npm never sees it,
+      and the two copies in <code>.claude/</code> and <code>.vscode/</code> re-create each other —
+      so deleting one directory fixes nothing.</p>
+      <p class="trigger">▸ fires on every new agent session</p>
     </div>
   </div>
   <div class="callout" id="is-this-npm">
@@ -380,7 +399,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.2.0</a> · MIT</span>
+    <span><a href="https://github.com/AviOfLagos/snare">github.com/AviOfLagos/snare</a> · <a href="changelog.html">v1.4.0</a> · MIT</span>
   </div>
 </footer>
 </div>

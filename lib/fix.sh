@@ -62,7 +62,14 @@ def _is_folder_open(task):
                for k, v in ro.items())
 
 def clean_tasks(data):
-    if b'"tasks"' not in data or len(data) > 1000000:
+    # The gate may not test for ANY byte sequence a parser would resolve. A
+    # first pass gated on b'"tasks"' and the key came back as "\\u0074asks",
+    # which json resolves to tasks and VS Code runs — the same bypass as
+    # folderOpen, one level up. So the gate is shape only: a small JSON
+    # object. What it contains is decided after parsing, never before.
+    if len(data) > 200000:
+        return None
+    if data[:1024].lstrip()[:1] != b"{":
         return None
     try:
         d = jsonc_load(data)
