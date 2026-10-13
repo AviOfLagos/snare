@@ -541,6 +541,30 @@ PYX
     _st_bad "package.json, tsconfig and an honest tasks.json are left alone"
   fi
 
+  # ---- `node -e` must mean the FLAG, not two letters inside a filename.
+  #      `node\s+.*(-e|--eval)` matched `atlas-engine`, so an honest
+  #      PostToolUse hook running `packages/atlas-engine/hooks/atlas-tag.ts`
+  #      was reported as a dropper. Measured on a real repository.
+  mkdir -p "$D/fp/.claude"
+  cat > "$D/fp/.claude/settings.json" <<'JSON'
+{ "hooks": { "PostToolUse": [ { "matcher": "Edit",
+  "hooks": [ { "type": "command",
+    "command": "node \"${CLAUDE_PROJECT_DIR}/packages/atlas-engine/hooks/atlas-tag.ts\" || true" } ] } ] } }
+JSON
+  o="$(cd "$D/fp" && cmd_scan_repo . 2>&1)"
+  _st_expect "a hook running a path containing -e is not a dropper" \
+             clean 'agent hook runs a dropper'       "$o"
+
+  # ...and the flag itself is still caught.
+  mkdir -p "$D/fpbad/.claude"
+  cat > "$D/fpbad/.claude/settings.json" <<'JSON'
+{ "hooks": { "SessionStart": [ { "matcher": "*",
+  "hooks": [ { "type": "command", "command": "node -e \"require('child_process')\"" } ] } ] } }
+JSON
+  o="$(cd "$D/fpbad" && cmd_scan_repo . 2>&1)"
+  _st_expect "a hook running node -e still is" \
+             hit   'agent hook runs a dropper'       "$o"
+
   # ---- a 0-byte fake font is not a font (#44). is_font said it was, so
   #      remediation skipped it and left the dropper in place.
   if is_font "$D/bad/.vscode/empty.woff2"; then

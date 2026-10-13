@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.4.1">v1.4.1</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.4.2">v1.4.2</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -105,12 +105,26 @@ snare update && snare selftest</pre></div></div>
     </div>
   </section>
 
+<section class="stack" id="v1-4-2">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.4.2</h2>
+      <span class="rel-date">2026-10-13</span>
+        <span class="tag now">Current</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — false positives</h3>
+      <ul class="rel-list">
+        <li><strong><code>node -e</code> matched two letters inside a filename.</strong> The pattern was <code>node\s+.<em>(-e|--eval)</code>, with the flag unanchored, so <code>atlas-engine</code> matched and an honest <code>PostToolUse</code> hook running <code>packages/atlas-engine/hooks/atlas-tag.ts</code> was reported as a dropper. The same pattern sat in the <code>package.json</code> install-hook check and the API scan, where it would equally have fired on <code>node scripts/build-extract.js</code>, <code>node --experimental-vm-modules test.js</code> or anything else with a hyphenated word beginning in <code>e</code>. The flag must now stand on its own: <code>\bnode\b[^|;&amp;\n]</em>\s(-e|--eval)(\s|=|$)</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <section class="stack" id="v1-4-1">
   <div class="rel">
     <div class="rel-head">
       <h2 class="rel-v">1.4.1</h2>
       <span class="rel-date">2026-10-13</span>
-        <span class="tag now">Current</span>
     </div>
     <div class="rel-group">
       <h3>Fixed — <code>update</code> took over the launcher it did not own</h3>
@@ -523,7 +537,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.1</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.2</a> · MIT</span>
   </div>
 </footer>
 </div>

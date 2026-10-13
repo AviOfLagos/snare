@@ -7,6 +7,28 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.4.2] — 2026-10-13
+
+### Fixed — false positives
+
+Found by running 1.4.1 against a real repository rather than a fixture.
+
+- **`node -e` matched two letters inside a filename.** The pattern was
+  `node\s+.*(-e|--eval)`, with the flag unanchored, so `atlas-engine` matched
+  and an honest `PostToolUse` hook running
+  `packages/atlas-engine/hooks/atlas-tag.ts` was reported as a dropper. The
+  same pattern sat in the `package.json` install-hook check and the API scan,
+  where it would equally have fired on `node scripts/build-extract.js`,
+  `node --experimental-vm-modules test.js` or anything else with a hyphenated
+  word beginning in `e`. The flag must now stand on its own:
+  `\bnode\b[^|;&\n]*\s(-e|--eval)(\s|=|$)`.
+
+Nine commands were checked against both forms. The old one fired on four
+honest ones; the new one fires on none of them and still catches every real
+`node -e` and `node --eval`, including `--eval="x"` and a flag after a script
+path. Both halves have regression tests, because a detector that cries wolf on
+a project's own tooling is how people learn to ignore it.
+
 ## [1.4.1] — 2026-10-13
 
 ### Fixed — `update` took over the launcher it did not own
