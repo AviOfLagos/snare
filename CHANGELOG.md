@@ -7,6 +7,27 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.4.1] — 2026-10-13
+
+### Fixed — `update` took over the launcher it did not own
+
+`snare update` relinked `~/.local/bin/snare` unconditionally, so running it
+from **any** checkout — a fork, a git worktree, a throwaway clone — silently
+pointed the global launcher at that checkout. Delete the clone afterwards and
+`snare` is a dangling symlink, with nothing having said so. Found exactly that
+way: a clone in `$TMPDIR` was used to test the 1.4.0 remote repointing, and it
+captured the launcher on the way past.
+
+The launcher is now only touched when it already refers to this checkout
+(nothing to do, and nothing said), when it is **broken** — pointing at
+something that no longer exists, where any working snare is an improvement —
+or when the new `snare update --relink` asks for it. A launcher pointing at a
+different, working install is left alone and reported, with the command to
+move it if that is what you wanted.
+
+All five cases have regression tests, and they run against `SNARE_BIN` in a
+temp directory: a test that relinks the tester's own launcher is the bug.
+
 ## [1.4.0] — 2026-10-12
 
 Three people found this campaign on their own machines and wrote up what they
