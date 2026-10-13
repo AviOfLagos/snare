@@ -243,12 +243,79 @@ snare_update_nudge(){
   return 0
 }
 
+# Absolute path for something that need not exist yet. macOS has no
+# `readlink -f`, and `realpath` is not everywhere either.
+_snare_abspath(){
+  local d b
+  d="$(dirname -- "$1")"; b="$(basename -- "$1")"
+  ( cd "$d" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$b" ) || printf '%s\n' "$1"
+}
+
+# Keep the launcher in ~/.local/bin pointing at the install it belongs to.
+#
+# This used to relink unconditionally, which meant `snare update` run from ANY
+# checkout — a fork, a worktree, a throwaway clone in /tmp — silently pointed
+# the global launcher at that checkout. Delete the clone afterwards and
+# `snare` is a dangling symlink, with nothing having said so. Found exactly
+# that way while testing.
+#
+# The launcher is only touched when it already refers to this checkout
+# (nothing to do), when it is broken (pointing at something that no longer
+# exists, so any working snare is an improvement), or when --relink says to.
+# A launcher pointing at a different, working install is left alone and
+# reported, because that is someone else's install and this is not it.
+#
+# $1 = 1 when --relink was passed.
+_snare_relink(){
+  local force="${1:-0}"
+  local bin="${SNARE_BIN:-$HOME/.local/bin}"
+  local link="$bin/snare" want="$SNARE_ROOT/bin/snare"
+  chmod +x "$want" 2>/dev/null
+  [ -e "$link" ] || [ -L "$link" ] || return 0
+
+  # Where does it point now? A symlink has a target; the Windows launcher stub
+  # names the path it execs.
+  local cur=""
+  if [ -L "$link" ]; then
+    cur="$(readlink "$link" 2>/dev/null)"
+    case "$cur" in
+      "" ) ;;
+      /* ) ;;
+      *  ) cur="$(dirname -- "$link")/$cur" ;;   # relative target
+    esac
+  elif [ -f "$link" ]; then
+    cur="$(grep -m1 -oE '/[^"'"'"' ]*/bin/snare' "$link" 2>/dev/null)"
+  fi
+
+  if [ -n "$cur" ] && [ "$(_snare_abspath "$cur")" = "$(_snare_abspath "$want")" ]; then
+    return 0                                     # already us; say nothing
+  fi
+
+  if [ "$force" = 1 ] || { [ -n "$cur" ] && [ ! -e "$cur" ]; }; then
+    if ln -sf "$want" "$link" 2>/dev/null; then
+      dim "  relinked $link -> $want"
+    else
+      ylw "  could not relink $link (no symlink support?) — rerun ./install.sh here"
+    fi
+    return 0
+  fi
+
+  if [ -n "$cur" ]; then
+    echo
+    ylw "  $link still points at another install and was left alone:"
+    dim  "      $cur"
+    dim  "  you updated $SNARE_ROOT. To point the launcher here: snare update --relink"
+  fi
+  return 0
+}
+
 cmd_update(){
-  local force=0 check=0
+  local force=0 check=0 relink=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --force) force=1 ;;
-      --check) check=1 ;;
+      --force)  force=1 ;;
+      --check)  check=1 ;;
+      --relink) relink=1 ;;
       *) red "unknown flag: $1"; return 2 ;;
     esac; shift
   done
@@ -344,13 +411,7 @@ cmd_update(){
     git -C "$SNARE_ROOT" log --oneline "$before..$after" 2>/dev/null | sed 's/^/      /' | head -15
   fi
 
-  # Keep the launcher pointing at this checkout wherever it lives.
-  local bin="${SNARE_BIN:-$HOME/.local/bin}"
-  if [ -e "$bin/snare" ]; then
-    ln -sf "$SNARE_ROOT/bin/snare" "$bin/snare" 2>/dev/null
-    chmod +x "$SNARE_ROOT/bin/snare" 2>/dev/null
-    dim "  relinked $bin/snare -> $SNARE_ROOT/bin/snare"
-  fi
+  _snare_relink "$relink"
 
   # Updating the checkout does not update anything snare has installed
   # elsewhere. Those copies keep running old code, and in the shield's case an

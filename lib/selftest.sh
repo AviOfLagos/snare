@@ -223,6 +223,7 @@ JSON
   _st_doctor
   _st_deaddrop
   _st_campaign
+  _st_relink
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
 
@@ -585,6 +586,64 @@ sys.exit(0 if [t for t in d['tasks'] if t.get('label')=='build'] else 1)" \
     _st_bad "branch enumeration does not produce a phantom 'origin' branch"
   else
     _st_ok  "branch enumeration does not produce a phantom 'origin' branch"
+  fi
+
+  rm -rf "$D"
+}
+
+# ------------------------------------------------- the launcher in ~/.local/bin
+# `snare update` relinked it unconditionally, so running update from ANY
+# checkout — a fork, a worktree, a throwaway clone — silently pointed the
+# global launcher at that checkout. Delete the clone and `snare` is dangling,
+# with nothing having said so.
+_st_relink(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snarelink.XXXXXX")" || {
+    _st_bad "cannot create a temp directory"; return 1; }
+  D="$(cd "$D" && pwd)"
+  mkdir -p "$D/bin" "$D/other/bin"
+  printf '#!/bin/sh\n' > "$D/other/bin/snare"; chmod +x "$D/other/bin/snare"
+
+  # SNARE_BIN keeps this away from the real launcher. Relinking the tester's
+  # own ~/.local/bin/snare to a temp directory is precisely the bug.
+  local out
+  ln -sf "$D/other/bin/snare" "$D/bin/snare"
+  out="$(SNARE_BIN="$D/bin" _snare_relink 0 2>&1)"
+  if [ "$(readlink "$D/bin/snare")" = "$D/other/bin/snare" ]; then
+    _st_ok  "update does not steal a launcher that points at another install"
+  else
+    _st_bad "update does not steal a launcher that points at another install"
+  fi
+  if printf '%s' "$out" | _qmatch "left alone"; then
+    _st_ok  "and says so, instead of leaving it a mystery"
+  else
+    _st_bad "and says so, instead of leaving it a mystery"
+  fi
+
+  # Dangling: any working snare is an improvement, so take it over.
+  ln -sf "$D/gone/bin/snare" "$D/bin/snare"
+  SNARE_BIN="$D/bin" _snare_relink 0 >/dev/null 2>&1
+  if [ "$(readlink "$D/bin/snare")" = "$SNARE_ROOT/bin/snare" ]; then
+    _st_ok  "a dangling launcher is repaired"
+  else
+    _st_bad "a dangling launcher is repaired"
+  fi
+
+  # Explicitly asked for.
+  ln -sf "$D/other/bin/snare" "$D/bin/snare"
+  SNARE_BIN="$D/bin" _snare_relink 1 >/dev/null 2>&1
+  if [ "$(readlink "$D/bin/snare")" = "$SNARE_ROOT/bin/snare" ]; then
+    _st_ok  "--relink points the launcher here on request"
+  else
+    _st_bad "--relink points the launcher here on request"
+  fi
+
+  # Already correct: silent, and still correct.
+  ln -sf "$SNARE_ROOT/bin/snare" "$D/bin/snare"
+  out="$(SNARE_BIN="$D/bin" _snare_relink 0 2>&1)"
+  if [ -z "$out" ] && [ "$(readlink "$D/bin/snare")" = "$SNARE_ROOT/bin/snare" ]; then
+    _st_ok  "a launcher that is already correct is left silent"
+  else
+    _st_bad "a launcher that is already correct is left silent"
   fi
 
   rm -rf "$D"

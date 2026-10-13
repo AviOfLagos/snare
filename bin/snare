@@ -3,7 +3,7 @@
 # https://github.com/  •  MIT
 set -uo pipefail
 
-SNARE_VERSION="1.4.0"
+SNARE_VERSION="1.4.1"
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so
 # BASH_SOURCE is the link, not the real file. (readlink -f is not portable.)
 _src="${BASH_SOURCE[0]}"
@@ -113,6 +113,7 @@ ${C_BLD}PREVENT${C_OFF}
 ${C_BLD}MAINTAIN${C_OFF}
   snare update                  pull the latest version
   snare update --check          is a newer version available?
+  snare update --relink         point ~/.local/bin/snare at THIS checkout
 
 ${C_BLD}FIX${C_OFF}
   snare fix <owner/repo>                      dry run (always backs up first)
