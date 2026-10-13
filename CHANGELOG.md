@@ -20,13 +20,22 @@ Found by running 1.4.1 against a real repository rather than a fixture.
   same pattern sat in the `package.json` install-hook check and the API scan,
   where it would equally have fired on `node scripts/build-extract.js`,
   `node --experimental-vm-modules test.js` or anything else with a hyphenated
-  word beginning in `e`. The flag must now stand on its own:
-  `\bnode\b[^|;&\n]*\s(-e|--eval)(\s|=|$)`.
+  word beginning in `e`. The flag must now stand on its own.
 
-Nine commands were checked against both forms. The old one fired on four
-honest ones; the new one fires on none of them and still catches every real
-`node -e` and `node --eval`, including `--eval="x"` and a flag after a script
-path. Both halves have regression tests, because a detector that cries wolf on
+### Fixed — and four ways to run code that nothing caught
+
+Reviewing that fix turned up the other half. `node -p` evaluates its argument
+exactly as `node -e` does, `--print` is its long form, and the clustered
+`-pe` / `-ep` are how you write it without it looking like either. None of
+those were matched before this release, by the old pattern or the corrected
+one. The flag set is now `-e`, `-p`, `--eval`, `--print` and the two clusters,
+and a selftest asserts every one of them rather than the one that was easy to
+remember.
+
+Sixteen commands were checked against both forms. The old one fired on four honest
+ones and missed four real ones; the new one is silent on all six honest
+commands and catches all ten evaluating forms, including `--eval="x"` and a
+flag after a script path. Both halves have regression tests, because a detector that cries wolf on
 a project's own tooling is how people learn to ignore it.
 
 ## [1.4.1] — 2026-10-13

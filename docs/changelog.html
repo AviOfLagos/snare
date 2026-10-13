@@ -115,7 +115,12 @@ snare update && snare selftest</pre></div></div>
     <div class="rel-group">
       <h3>Fixed — false positives</h3>
       <ul class="rel-list">
-        <li><strong><code>node -e</code> matched two letters inside a filename.</strong> The pattern was <code>node\s+.<em>(-e|--eval)</code>, with the flag unanchored, so <code>atlas-engine</code> matched and an honest <code>PostToolUse</code> hook running <code>packages/atlas-engine/hooks/atlas-tag.ts</code> was reported as a dropper. The same pattern sat in the <code>package.json</code> install-hook check and the API scan, where it would equally have fired on <code>node scripts/build-extract.js</code>, <code>node --experimental-vm-modules test.js</code> or anything else with a hyphenated word beginning in <code>e</code>. The flag must now stand on its own: <code>\bnode\b[^|;&amp;\n]</em>\s(-e|--eval)(\s|=|$)</code>.</li>
+        <li><strong><code>node -e</code> matched two letters inside a filename.</strong> The pattern was <code>node\s+.*(-e|--eval)</code>, with the flag unanchored, so <code>atlas-engine</code> matched and an honest <code>PostToolUse</code> hook running <code>packages/atlas-engine/hooks/atlas-tag.ts</code> was reported as a dropper. The same pattern sat in the <code>package.json</code> install-hook check and the API scan, where it would equally have fired on <code>node scripts/build-extract.js</code>, <code>node --experimental-vm-modules test.js</code> or anything else with a hyphenated word beginning in <code>e</code>. The flag must now stand on its own.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — and four ways to run code that nothing caught</h3>
+      <ul class="rel-list">
       </ul>
     </div>
   </div>

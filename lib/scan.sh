@@ -11,7 +11,7 @@ _scan_hooks_py(){
   snare_jsonc_py
   cat <<'PYB'
 import sys
-BAD=re.compile(r"setup\.mjs|math_init|Math_Symbol|node\s+[.]?/?[.](vscode|claude|cursor|kilo)/|\bnode\b[^|;&\n]*\s(-e|--eval)(\s|=|$)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(|Invoke-WebRequest|EncodedCommand",re.I)
+BAD=re.compile(r"setup\.mjs|math_init|Math_Symbol|node\s+[.]?/?[.](vscode|claude|cursor|kilo)/|\bnode\b[^|;&\n]*\s--?(e|p|pe|ep|eval|print)(\s|=|$)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(|Invoke-WebRequest|EncodedCommand",re.I)
 def walk(o,ev=None):
     if isinstance(o,dict):
         for k,v in o.items():
@@ -117,7 +117,7 @@ import json,re,sys
 try: d=json.load(open(sys.argv[1]))
 except Exception: sys.exit(0)
 s=d.get("scripts") or {}
-BAD=re.compile(r"\bnode\b[^|;&\n]*\s(-e|--eval)(\s|=|$)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(",re.I)
+BAD=re.compile(r"\bnode\b[^|;&\n]*\s--?(e|p|pe|ep|eval|print)(\s|=|$)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(",re.I)
 HOOKS=("preinstall","install","postinstall","prepare","prepublish")
 for k in HOOKS:
     v=s.get(k)
@@ -718,7 +718,7 @@ import json,re,sys
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
 s=d.get("scripts") or {}
-BAD=re.compile(r"\bnode\b[^|;&\n]*\s(-e|--eval)(\s|=|$)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(",re.I)
+BAD=re.compile(r"\bnode\b[^|;&\n]*\s--?(e|p|pe|ep|eval|print)(\s|=|$)|curl|wget|base64|\beval\b|child_process|\|\s*(sh|bash)|https?://\d+\.\d+\.\d+\.\d+|atob\(",re.I)
 for k in ("preinstall","install","postinstall","prepare"):
     v=s.get(k)
     if v and BAD.search(str(v)): print("      %s: %s"%(k,v))
