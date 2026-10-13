@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.4.2">v1.4.2</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.4.3">v1.4.3</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -105,12 +105,27 @@ snare update && snare selftest</pre></div></div>
     </div>
   </section>
 
+<section class="stack" id="v1-4-3">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.4.3</h2>
+      <span class="rel-date">2026-10-13</span>
+        <span class="tag now">Current</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — <code>--purge-history</code> reported zero while a payload stayed in history</h3>
+      <ul class="rel-list">
+        <li><strong>The file OPENED with the whitespace wall.</strong> 424 tabs, then 28KB of code on the same line, and that was the whole file. Rule A needs real code <em>in front of</em> the run; rule B needs the payload to look obfuscated by the markers below. This shape satisfied neither. A line that begins with 50+ spaces or tabs, runs long and dense, and carries a hard campaign marker is now dropped on that basis alone — the whitespace prefix is the structural tell, and no honest file opens that way.</li>
+        <li><strong>The obfuscation was a style nothing recognised.</strong> No <code>_0x</code> identifiers, no <code>\u00</code> escapes, no <code>eval(</code>, no <code>atob(</code> — just long random identifiers (<code>RvJq_qacMrKUHEOocOXlFJqDe</code>) and an array of hex strings decoded at runtime. Two adjacent hex strings of eight or more characters inside an array literal is now an obfuscation signal in its own right.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <section class="stack" id="v1-4-2">
   <div class="rel">
     <div class="rel-head">
       <h2 class="rel-v">1.4.2</h2>
       <span class="rel-date">2026-10-13</span>
-        <span class="tag now">Current</span>
     </div>
     <div class="rel-group">
       <h3>Fixed — false positives</h3>
@@ -542,7 +557,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.2</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.3</a> · MIT</span>
   </div>
 </footer>
 </div>

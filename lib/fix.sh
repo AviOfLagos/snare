@@ -20,7 +20,20 @@ ONLY = re.compile(rb'^[ \t]*\S')
 # What identifies the appended half as code rather than a trailing comment.
 # Variants are minified and share no strings, so this is structural on purpose.
 OBF  = re.compile(rb'_0x[0-9a-f]{4,}|\\u00[0-9a-fA-F]{2}|eval\(|atob\(|new URL\('
-                  rb'|require\(["\']node:|child_process|\}\)\(\);?\s*$')
+                  rb'|require\(["\']node:|child_process|\}\)\(\);?\s*$'
+                  # A table of hex strings in an array literal. The variant
+                  # found live in two repositories used none of the markers
+                  # above — no _0x names, no \u escapes, no eval or atob —
+                  # just long random identifiers and an array of hex blobs it
+                  # decodes at runtime. Two adjacent ones are enough to say
+                  # it, and nothing honest writes that.
+                  rb"|\['[0-9a-f]{8,}',\s*'[0-9a-f]{8,}'")
+# A file that OPENS with a wall of whitespace. Rule A needs code in front of
+# the run and rule B needs the payload to look obfuscated; this shape has
+# neither — 424 tabs and then 28KB of code, which is the whole file. It hid a
+# live payload from --purge-history, and the purge reported zero because the
+# verify step asks this same cleaner. Nothing legitimate opens with 50 tabs.
+WSFIRST = re.compile(rb'^[ \t]{50,}\S')
 # Hard campaign markers, matched lowercase. Never the primary test — an
 # obfuscated variant contains none of them — but near enough to zero false
 # positives to justify dropping a whole line rather than only a line's tail.
@@ -106,6 +119,13 @@ def clean(data):
         # including this tool's own guard pattern and its write-ups.
         if (len(ln) > 200 and ONLY.match(ln) and _dense(ln)
                 and MARK.search(ln.lower()) and OBF.search(ln)):
+            changed = True; continue
+        # Rule C: the line IS the hiding place — a long whitespace run first,
+        # then dense code carrying a hard campaign marker. OBF is not required
+        # here because the whitespace prefix is doing the same job: it is the
+        # structural tell, and it is one no honest file has.
+        if (WSFIRST.match(ln) and len(ln) > 200 and _dense(ln)
+                and MARK.search(ln.lower())):
             changed = True; continue
         out.append(ln)
     return b'\n'.join(out), changed

@@ -7,6 +7,37 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.4.3] — 2026-10-13
+
+### Fixed — `--purge-history` reported zero while a payload stayed in history
+
+Found by purging a real repository and then scanning what came back. A 29,057
+byte `api.js` survived the rewrite, and the purge printed **`blobs still
+carrying a hidden payload: 0`** — because the verify step re-runs the same
+cleaner, so anything the cleaner cannot see verifies clean. That is the worst
+shape this failure can take: it is a false clean in remediation, reported with
+a number next to it.
+
+Two reasons it was invisible, both now closed:
+
+- **The file OPENED with the whitespace wall.** 424 tabs, then 28KB of code on
+  the same line, and that was the whole file. Rule A needs real code *in front
+  of* the run; rule B needs the payload to look obfuscated by the markers
+  below. This shape satisfied neither. A line that begins with 50+ spaces or
+  tabs, runs long and dense, and carries a hard campaign marker is now dropped
+  on that basis alone — the whitespace prefix is the structural tell, and no
+  honest file opens that way.
+- **The obfuscation was a style nothing recognised.** No `_0x` identifiers, no
+  `\u00` escapes, no `eval(`, no `atob(` — just long random identifiers
+  (`RvJq_qacMrKUHEOocOXlFJqDe`) and an array of hex strings decoded at
+  runtime. Two adjacent hex strings of eight or more characters inside an
+  array literal is now an obfuscation signal in its own right.
+
+Verified on the live 29,057-byte sample: it now cleans to nothing. Controls
+checked alongside and all left untouched — snare's own guard pattern, a
+minified vendor bundle, deeply indented source, a JSON document and a
+tab-indented recipe.
+
 ## [1.4.2] — 2026-10-13
 
 ### Fixed — false positives
