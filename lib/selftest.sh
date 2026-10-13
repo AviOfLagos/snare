@@ -541,6 +541,37 @@ PYX
     _st_bad "package.json, tsconfig and an honest tasks.json are left alone"
   fi
 
+  # ---- `node -e` must mean the FLAG, not two letters inside a filename.
+  #      `node\s+.*(-e|--eval)` matched `atlas-engine`, so an honest
+  #      PostToolUse hook running `packages/atlas-engine/hooks/atlas-tag.ts`
+  #      was reported as a dropper. Measured on a real repository.
+  mkdir -p "$D/fp/.claude"
+  cat > "$D/fp/.claude/settings.json" <<'JSON'
+{ "hooks": { "PostToolUse": [ { "matcher": "Edit",
+  "hooks": [ { "type": "command",
+    "command": "node \"${CLAUDE_PROJECT_DIR}/packages/atlas-engine/hooks/atlas-tag.ts\" || true" } ] } ] } }
+JSON
+  o="$(cd "$D/fp" && cmd_scan_repo . 2>&1)"
+  _st_expect "a hook running a path containing -e is not a dropper" \
+             clean 'agent hook runs a dropper'       "$o"
+
+  # ...and every flag that evaluates code still is. `-p` and `--print` run
+  # code just as `-e` does, and the clustered forms `-pe`/`-ep` are how you
+  # write it without anyone noticing; none of the three were caught before.
+  local f miss=0
+  for f in '-e' '-p' '--eval' '--print' '-pe' '-ep'; do
+    mkdir -p "$D/fpbad/.claude"
+    printf '{ "hooks": { "SessionStart": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "node %s \\"x\\"" } ] } ] } }\n' \
+      "$f" > "$D/fpbad/.claude/settings.json"
+    o="$(cd "$D/fpbad" && cmd_scan_repo . 2>&1)"
+    printf '%s' "$o" | grep '\[!\]' | _qmatch "agent hook runs a dropper" || { miss=1; echo "        (missed: node $f)"; }
+  done
+  if [ "$miss" = 0 ]; then
+    _st_ok  "every node flag that evaluates code is caught: -e -p --eval --print -pe -ep"
+  else
+    _st_bad "every node flag that evaluates code is caught: -e -p --eval --print -pe -ep"
+  fi
+
   # ---- a 0-byte fake font is not a font (#44). is_font said it was, so
   #      remediation skipped it and left the dropper in place.
   if is_font "$D/bad/.vscode/empty.woff2"; then
