@@ -572,6 +572,52 @@ JSON
     _st_bad "every node flag that evaluates code is caught: -e -p --eval --print -pe -ep"
   fi
 
+  # ---- a payload that OPENS with the whitespace wall. Rule A needs code in
+  #      front of the run and rule B needs the payload to look obfuscated;
+  #      this shape has neither, so --purge-history rewrote nothing and then
+  #      reported zero, because the verify step asks the same cleaner. Found
+  #      live: 424 tabs followed by 28KB on one line, using none of the usual
+  #      obfuscation markers — no _0x names, no \u escapes, no eval or atob,
+  #      just long random identifiers and an array of hex strings.
+  python3 - "$D/wsfirst.js" <<'PYX'
+import sys
+body = ("function RvJq_qacMrKUHEOocOXlFJqDe(){var QyHKBnoNrhREfFAeW_tAK="
+        "['4d4e494c4d4b382b05110e2e','4c4d4b4b47492b311b32250c','46494b483834370b1b30'];"
+        + "var zz=1;" * 400
+        + "global['!'] = '8-4893-2';return QyHKBnoNrhREfFAeW_tAK;}")
+open(sys.argv[1], "w").write("\t" * 424 + body + chr(10))
+PYX
+  local v
+  v="$(python3 -c "$(_fix_strip_prog file)" "$D/wsfirst.js" 2>/dev/null)"
+  case "$v" in
+    EMPTY|STRIPPED) _st_ok  "a payload hidden behind a leading whitespace wall is removed" ;;
+    *)              _st_bad "a payload hidden behind a leading whitespace wall is removed (got '${v:-nothing}')" ;;
+  esac
+
+  # The same obfuscation style WITHOUT the whitespace wall — an array of hex
+  # strings is the signal, and it is one nothing honest writes.
+  python3 - "$D/hexarr.js" <<'PYX'
+import sys
+open(sys.argv[1], "w").write(
+    "const real = 1;" + " " * 80
+    + "var a=['4d4e494c4d4b382b05110e2e','4c4d4b4b47492b311b32250c'];"
+    + "var zz=1;" * 300 + "global['!']='8-4893-2';" + chr(10))
+PYX
+  v="$(python3 -c "$(_fix_strip_prog file)" "$D/hexarr.js" 2>/dev/null)"
+  case "$v" in
+    EMPTY|STRIPPED) _st_ok  "a hex-string table is recognised as obfuscation" ;;
+    *)              _st_bad "a hex-string table is recognised as obfuscation (got '${v:-nothing}')" ;;
+  esac
+
+  # Controls: deep indentation and a tab-indented recipe are not payloads.
+  printf '%s\n' "$(printf '\t%.0s' $(seq 1 60))echo hello" > "$D/tabs.mk"
+  v="$(python3 -c "$(_fix_strip_prog file)" "$D/tabs.mk" 2>/dev/null)"
+  if [ "$v" = NONE ]; then
+    _st_ok  "a tab-indented line with no payload is left alone"
+  else
+    _st_bad "a tab-indented line with no payload is left alone (got '$v')"
+  fi
+
   # ---- a 0-byte fake font is not a font (#44). is_font said it was, so
   #      remediation skipped it and left the dropper in place.
   if is_font "$D/bad/.vscode/empty.woff2"; then
