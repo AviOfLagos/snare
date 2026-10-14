@@ -334,6 +334,8 @@ snare_open(){ # open a URL/file in the desktop default handler
 }
 
 snare_desktop_notify(){ # $1=message
+  # selftest exercises the alarms on purpose; it must not raise real ones.
+  [ -n "${SNARE_NO_NOTIFY:-}" ] && return 0
   case "$SNARE_OS" in
     macos) osascript -e "display notification \"$1\" with title \"snare\" sound name \"Basso\"" >/dev/null 2>&1 ;;
     linux|wsl) command -v notify-send >/dev/null && notify-send -u critical "snare" "$1" >/dev/null 2>&1 ;;

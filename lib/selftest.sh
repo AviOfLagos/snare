@@ -224,6 +224,8 @@ JSON
   _st_deaddrop
   _st_campaign
   _st_relink
+  _st_gate
+  _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
 
@@ -724,4 +726,131 @@ _st_relink(){
   fi
 
   rm -rf "$D"
+}
+
+# -------------------------------------------------------- the agent gate
+# The gate is the line between "an agent pulled poisoned code" and "an agent
+# was stopped and told you". Each case here is one that was run for real while
+# building it, including the one that first came back as a false clean.
+# GATE_CACHE/GATE_LOG are read by gate.sh, which shellcheck cannot see from here.
+# shellcheck disable=SC2034
+_st_gate(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snaregate-st.XXXXXX")" || {
+    _st_bad "cannot create a temp directory"; return 1; }
+  D="$(cd "$D" && pwd)"
+  # Alarms and the verdict cache are real side effects; keep both inside $D.
+  local SNARE_NO_NOTIFY=1; export SNARE_NO_NOTIFY
+  local _home_was="$SNARE_HOME"; SNARE_HOME="$D/.snare"; GATE_CACHE="$SNARE_HOME/gate-cache"
+  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+
+  # ---- the classifier: quoted text is not a command
+  local acts
+  acts="$(python3 -c "$(_gate_py)" "echo 'npm install' && git commit -m \"git pull\"" "$D" 2>/dev/null)"
+  if [ -z "$acts" ]; then _st_ok "a command only quoted inside echo or a commit message is not gated"
+  else _st_bad "a command only quoted inside echo or a commit message is not gated (got: $acts)"; fi
+  acts="$(python3 -c "$(_gate_py)" "cd app && npm --prefix web ci && git -C repo pull" "$D" 2>/dev/null)"
+  if printf '%s' "$acts" | grep -q "tree	$D/app/web" && printf '%s' "$acts" | grep -q "pull	$D/app/repo"; then
+    _st_ok "cd, --prefix and git -C are followed to the directory that actually runs"
+  else _st_bad "cd, --prefix and git -C are followed (got: $acts)"; fi
+
+  # ---- fixtures: an upstream that starts clean, then gets poisoned
+  _stg(){ git -c user.email=t@t -c user.name=t "$@"; }
+  git init -q --bare "$D/remote.git"
+  mkdir -p "$D/seed" && ( cd "$D/seed" && git init -q && git checkout -q -b main 2>/dev/null
+    printf '{"name":"x","scripts":{"dev":"next dev"}}\n' > package.json
+    git add -A && _stg commit -qm init && git push -q "$D/remote.git" main ) >/dev/null 2>&1
+  git --git-dir="$D/remote.git" symbolic-ref HEAD refs/heads/main
+  git clone -q "$D/remote.git" "$D/work" 2>/dev/null
+
+  local out rc
+  out="$(cd "$D/work" && _gate_decide "npm install" "$D/work")"; rc=$?
+  if [ "$rc" = 0 ]; then _st_ok "a clean repository is let through"
+  else _st_bad "a clean repository is let through (blocked: $out)"; fi
+
+  ( cd "$D/seed" && printf '{"name":"x","scripts":{"dev":"node api.js && next dev"}}\n' > package.json
+    python3 -c "open('api.js','w').write('var _0xaf=[];'+'x'*29000)"
+    git add -A && _stg commit -qm "chore: update" && git push -q "$D/remote.git" main ) >/dev/null 2>&1
+
+  # ---- pull: fetched, scanned in a throwaway worktree, nothing merged
+  local before; before="$(git -C "$D/work" rev-parse HEAD)"
+  out="$(_gate_decide "git pull" "$D/work")"; rc=$?
+  if [ "$rc" = 1 ] && printf '%s' "$out" | _qmatch "supply-chain payload"; then
+    _st_ok "git pull of a poisoned upstream is blocked before it merges"
+  else _st_bad "git pull of a poisoned upstream is blocked before it merges (rc=$rc)"; fi
+  if [ "$(git -C "$D/work" rev-parse HEAD)" = "$before" ] && [ ! -f "$D/work/api.js" ] \
+     && [ "$(git -C "$D/work" worktree list | wc -l | tr -d ' ')" = 1 ]; then
+    _st_ok "and the working copy is untouched, with no worktree left behind"
+  else _st_bad "and the working copy is untouched, with no worktree left behind"; fi
+
+  # ---- clone: quarantined first, so the real destination never appears
+  out="$(cd "$D" && _gate_decide "git clone $D/remote.git dest" "$D")"; rc=$?
+  if [ "$rc" = 1 ] && [ ! -d "$D/dest" ]; then
+    _st_ok "git clone of a poisoned remote is blocked before anything is created"
+  else _st_bad "git clone of a poisoned remote is blocked before anything is created (rc=$rc)"; fi
+
+  # The remote's HEAD names a branch that does not exist, so a clone checks
+  # out nothing. The first version scanned that empty directory and said
+  # clean — about code it never looked at.
+  git --git-dir="$D/remote.git" symbolic-ref HEAD refs/heads/master
+  out="$(cd "$D" && _gate_decide "git clone $D/remote.git dest2" "$D")"; rc=$?
+  if [ "$rc" = 1 ]; then _st_ok "a remote whose HEAD is missing has every branch scanned instead"
+  else _st_bad "a remote whose HEAD is missing has every branch scanned instead (said clean)"; fi
+
+  # ---- the hook itself: exit 2 blocks and explains; anything else is free
+  local hj
+  hj="$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' \
+          "$D/seed" "npm run dev")"
+  out="$(printf '%s' "$hj" | SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook 2>&1 >/dev/null)"; rc=$?
+  if [ "$rc" = 2 ] && printf '%s' "$out" | _qmatch "FIRE ON THE MOUNTAIN"; then
+    _st_ok "the Claude Code hook blocks with exit 2 and tells the agent why"
+  else _st_bad "the Claude Code hook blocks with exit 2 and tells the agent why (rc=$rc)"; fi
+  hj="$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","cwd":sys.argv[1],"tool_input":{"command":"ls -la && git status"}}))' "$D/seed")"
+  printf '%s' "$hj" | SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; rc=$?
+  if [ "$rc" = 0 ]; then _st_ok "ordinary commands pass straight through the hook"
+  else _st_bad "ordinary commands pass straight through the hook (rc=$rc)"; fi
+
+  # ---- agents install: merges, is idempotent, and uninstalls exactly
+  local H="$D/home"; mkdir -p "$H/.claude"
+  printf '{\n  "model": "opus",\n  "hooks": {"PostToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "prettier -w"}]}]}\n}\n' \
+    > "$H/.claude/settings.json"
+  printf '# mine\n\nBe concise.\n' > "$H/.claude/CLAUDE.md"
+  HOME="$H" SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" agents install >/dev/null 2>&1
+  HOME="$H" SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" agents install >/dev/null 2>&1
+  if python3 -c "
+import json,sys; d=json.load(open(sys.argv[1]))
+assert d['model']=='opus' and len(d['hooks']['PostToolUse'])==1 and len(d['hooks']['PreToolUse'])==1" \
+       "$H/.claude/settings.json" 2>/dev/null \
+     && [ "$(grep -c 'snare gate (managed' "$H/.claude/CLAUDE.md")" = 1 ]; then
+    _st_ok "agents install keeps your own settings and is idempotent"
+  else _st_bad "agents install keeps your own settings and is idempotent"; fi
+  HOME="$H" SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" agents uninstall >/dev/null 2>&1
+  HOME="$H" SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" agents sync >/dev/null 2>&1
+  if cmp -s "$H/.claude/CLAUDE.md" "$H/.claude/CLAUDE.md.snare-backup" \
+     && ! grep -q 'gate --hook' "$H/.claude/settings.json"; then
+    _st_ok "uninstall restores the files, and update does not put it back"
+  else _st_bad "uninstall restores the files, and update does not put it back"; fi
+
+  SNARE_HOME="$_home_was"; GATE_CACHE="$SNARE_HOME/gate-cache"
+  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+  unset SNARE_NO_NOTIFY
+  rm -rf "$D"
+}
+
+# ------------------------------------------------- the shield must not break npm
+# Claude Code copies your shell functions into its own shell but drops ones
+# that start with "_". The shield's wrappers called _snare_shield_guard, so in
+# every agent session npm, pnpm, yarn, bun and npx failed: "command not found".
+_st_shield_fallback(){
+  local d; d="$(mktemp -d "${TMPDIR:-/tmp}/snareshield.XXXXXX")" || return 0
+  _shield_snippet > "$d/snippet.sh"
+  # A stand-in npm on PATH, so "the real tool ran" is something we can see.
+  printf '#!/bin/sh\necho REAL-NPM\n' > "$d/npm"; chmod +x "$d/npm"
+  local out
+  out="$(PATH="$d:$PATH" bash -c ". '$d/snippet.sh'; unset -f snare_shield_guard; npm --version" 2>&1)"
+  if [ "$out" = REAL-NPM ] && ! grep -q '_snare_shield_guard' "$d/snippet.sh"; then
+    _st_ok  "the shell shield still runs npm when its helper is dropped"
+  else
+    _st_bad "the shell shield still runs npm when its helper is dropped (got: $out)"
+  fi
+  rm -rf "$d"
 }

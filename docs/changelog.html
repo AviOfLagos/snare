@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.4.3">v1.4.3</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.5.0">v1.5.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -105,12 +105,64 @@ snare update && snare selftest</pre></div></div>
     </div>
   </section>
 
+<section class="stack" id="v1-5-0">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.5.0</h2>
+      <span class="rel-date">2026-10-14</span>
+        <span class="tag now">Current</span>
+    </div>
+    <div class="rel-group">
+      <h3>Added — the gate: scan before code comes in or runs</h3>
+      <ul class="rel-list">
+        <li><strong><code>git clone</code></strong> clones to a quarantine directory first and scans that. The clone you asked for only happens if it is clean.</li>
+        <li><strong><code>git pull</code>, <code>merge</code>, <code>rebase</code>, <code>checkout</code>, <code>switch</code></strong> run <code>git fetch</code> — which executes nothing — then scan the incoming tree in a throwaway worktree, plus the forged-force-push check, before a single file lands in your working copy.</li>
+        <li><strong><code>npm</code>/<code>pnpm</code>/<code>yarn</code>/<code>bun install</code>, <code>npm ci</code>, <code>npx</code>, <code>npm run …</code>, <code>node</code>, <code>next</code>, <code>vite</code>, <code>tsx</code>, <code>turbo</code></strong> scan the directory they would run in. Anything in the npm family that is not on a short read-only list (<code>view</code>, <code>ls</code>, <code>--version</code>…) is gated: an unknown subcommand is treated as one that runs code.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — <code>snare agents</code>: the gate in front of every coding agent</h3>
+      <ul class="rel-list">
+        <li><strong>A Claude Code <code>PreToolUse</code> hook</strong> in <code>~/.claude/settings.json</code>. This is the part that actually protects you: it runs whether or not the agent reads or agrees with its instructions, and exit 2 stops the command and hands the findings to the agent. A block reads <strong>"FIRE ON THE MOUNTAIN"</strong>, tells the agent to stop and tell you, and raises a desktop notification in case it does not.</li>
+        <li><strong>An instruction block</strong> in <code>~/.claude/CLAUDE.md</code>, <code>~/.claude/AGENTS.md</code>, <code>~/AGENTS.md</code>, Codex's <code>~/.codex/AGENTS.md</code> and Gemini's <code>GEMINI.md</code> — only for tools that are installed. Advisory, for agents with no hook mechanism: run <code>snare gate -- &lt;command&gt;</code> first, and on a block, stop and tell the user rather than route around it.</li>
+        <li><strong><code>--project [dir]</code></strong> writes the same block into a repository's own <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code> and Copilot instructions, plus a project hook that calls <code>snare</code> by name, so teammates who have snare are covered too.</li>
+        <li>The plugin ships the hook as well. Installed both ways, the plugin defers to the global hook rather than scanning twice.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Measured</h3>
+      <ul class="rel-list">
+        <li>An agent's everyday commands — <code>ls</code>, <code>git status</code>, <code>git diff</code>, <code>rg</code> — pay <strong>~30ms</strong>, because a pure-bash pre-filter answers before snare loads. The first version cost ~370ms on every one.</li>
+        <li>A clean repository costs ~1.2s the first time and ~0.4s after, because clean verdicts are cached against HEAD, upstream, working-tree status and the files the known routes live in — including gitignored ones, since a payload dropped into an ignored <code>.vscode/</code> changes nothing <code>git status</code> sees. Findings are never cached.</li>
+        <li><code>snare scan repo</code> gained <code>SNARE_FAST</code>, which the gate uses: the repository's own files and the forged-push check, without <code>node_modules</code> or the full history walk. <code>snare scan repo</code> itself is unchanged and remains the full check.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the shell shield broke npm for every coding agent</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed while building it</h3>
+      <ul class="rel-list">
+        <li><strong>The first version called an empty clone clean.</strong> A remote whose <code>HEAD</code> names a branch that does not exist clones to an empty checkout, and the gate scanned that empty directory and let it through — a verdict about code it never looked at. It now fetches and scans every branch tip when nothing is checked out.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Known limits</h3>
+      <ul class="rel-list">
+        <li>The hook covers Claude Code. Codex, Cursor and Gemini get the instruction block, which they can ignore; Cursor's own shell hooks are a natural next step.</li>
+        <li>It reads commands, not intent: a script that runs <code>npm install</code> inside it, or a command assembled at runtime, is checked only as far as it is visible.</li>
+        <li>The gate checks the repository's own files. <code>node_modules</code> is left to <code>snare scan repo</code>, and npm itself to <code>snare doctor</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <section class="stack" id="v1-4-3">
   <div class="rel">
     <div class="rel-head">
       <h2 class="rel-v">1.4.3</h2>
       <span class="rel-date">2026-10-13</span>
-        <span class="tag now">Current</span>
     </div>
     <div class="rel-group">
       <h3>Fixed — <code>--purge-history</code> reported zero while a payload stayed in history</h3>
@@ -557,7 +609,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.3</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.5.0</a> · MIT</span>
   </div>
 </footer>
 </div>

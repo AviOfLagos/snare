@@ -7,6 +7,115 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.5.0] — 2026-10-14
+
+### Added — the gate: scan before code comes in or runs
+
+The incident behind this release was not someone typing a bad command. It was
+ordinary work — a pull, an install, `npm run dev` — done by a coding agent in
+a repository that had been poisoned upstream, with nobody finding out until
+days later. Every detection snare had was available; nothing ran it at the
+moment it mattered.
+
+`snare gate -- <command>` answers one question: does this command bring code
+in or run it, and if so, is that code clean? Exit 0 means run it.
+
+- **`git clone`** clones to a quarantine directory first and scans that. The
+  clone you asked for only happens if it is clean.
+- **`git pull`, `merge`, `rebase`, `checkout`, `switch`** run `git fetch` —
+  which executes nothing — then scan the incoming tree in a throwaway
+  worktree, plus the forged-force-push check, before a single file lands in
+  your working copy.
+- **`npm`/`pnpm`/`yarn`/`bun install`, `npm ci`, `npx`, `npm run …`, `node`,
+  `next`, `vite`, `tsx`, `turbo`** scan the directory they would run in.
+  Anything in the npm family that is not on a short read-only list (`view`,
+  `ls`, `--version`…) is gated: an unknown subcommand is treated as one that
+  runs code.
+
+It reads the command the way the shell does: `cd app && npm --prefix web ci`
+is checked in `app/web`, `git -C repo pull` in `repo`, and `echo 'npm install'`
+or `git commit -m "git pull"` is not a command at all.
+
+It fails **closed**. A scan that cannot finish — no network, no credentials —
+blocks the command and says so. A bypass (`SNARE_SKIP_GATE=1 <command>`) is
+honoured, logged to `~/.snare/logs/gate.log` and announced on the desktop,
+because a silent bypass is how the original went unnoticed.
+
+### Added — `snare agents`: the gate in front of every coding agent
+
+- **A Claude Code `PreToolUse` hook** in `~/.claude/settings.json`. This is the
+  part that actually protects you: it runs whether or not the agent reads or
+  agrees with its instructions, and exit 2 stops the command and hands the
+  findings to the agent. A block reads **"FIRE ON THE MOUNTAIN"**, tells the
+  agent to stop and tell you, and raises a desktop notification in case it
+  does not.
+- **An instruction block** in `~/.claude/CLAUDE.md`, `~/.claude/AGENTS.md`,
+  `~/AGENTS.md`, Codex's `~/.codex/AGENTS.md` and Gemini's `GEMINI.md` —
+  only for tools that are installed. Advisory, for agents with no hook
+  mechanism: run `snare gate -- <command>` first, and on a block, stop and
+  tell the user rather than route around it.
+- **`--project [dir]`** writes the same block into a repository's own
+  `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` and Copilot instructions, plus a
+  project hook that calls `snare` by name, so teammates who have snare are
+  covered too.
+- The plugin ships the hook as well. Installed both ways, the plugin defers to
+  the global hook rather than scanning twice.
+
+`install.sh` installs it, and **`snare update` refreshes it from the new
+code**, so every machine that already has snare picks it up on its next update
+— and picks up later fixes to it the same way. `snare agents uninstall`
+removes it byte-for-byte and records that you said no, so update never puts it
+back. Every file is backed up once before the first change, your own settings
+and hooks are kept, and running install twice changes nothing.
+
+### Measured
+
+- An agent's everyday commands — `ls`, `git status`, `git diff`, `rg` — pay
+  **~30ms**, because a pure-bash pre-filter answers before snare loads. The
+  first version cost ~370ms on every one.
+- A clean repository costs ~1.2s the first time and ~0.4s after, because
+  clean verdicts are cached against HEAD, upstream, working-tree status and
+  the files the known routes live in — including gitignored ones, since a
+  payload dropped into an ignored `.vscode/` changes nothing `git status`
+  sees. Findings are never cached.
+- `snare scan repo` gained `SNARE_FAST`, which the gate uses: the repository's
+  own files and the forged-push check, without `node_modules` or the full
+  history walk. `snare scan repo` itself is unchanged and remains the full
+  check.
+
+### Fixed — the shell shield broke npm for every coding agent
+
+Found because the gate's own live test printed `command not found:
+_snare_shield_guard` instead of running npm. Claude Code copies your shell
+functions into the shell its agent uses, but drops any whose name starts with
+an underscore. The shield's `npm`, `pnpm`, `yarn`, `bun` and `npx` wrappers
+were copied; the `_snare_shield_guard` helper they all call was not. So on any
+machine with the shield installed, **every package-manager command an agent
+ran failed** — which also means none of them was being checked.
+
+The helper is `snare_shield_guard` now, and each wrapper falls back to the
+real tool if the helper is missing for any other reason: a wrapper must never
+be the thing that breaks the tool it wraps. `snare update` refreshes an
+installed shield block from the new code, so this reaches everyone who has it.
+
+### Fixed while building it
+
+- **The first version called an empty clone clean.** A remote whose `HEAD`
+  names a branch that does not exist clones to an empty checkout, and the gate
+  scanned that empty directory and let it through — a verdict about code it
+  never looked at. It now fetches and scans every branch tip when nothing is
+  checked out.
+
+### Known limits
+
+- The hook covers Claude Code. Codex, Cursor and Gemini get the instruction
+  block, which they can ignore; Cursor's own shell hooks are a natural next
+  step.
+- It reads commands, not intent: a script that runs `npm install` inside it,
+  or a command assembled at runtime, is checked only as far as it is visible.
+- The gate checks the repository's own files. `node_modules` is left to
+  `snare scan repo`, and npm itself to `snare doctor`.
+
 ## [1.4.3] — 2026-10-13
 
 ### Fixed — `--purge-history` reported zero while a payload stayed in history

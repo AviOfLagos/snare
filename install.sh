@@ -90,6 +90,15 @@ case ":$PATH:" in
      echo "      export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
 
+# Put the gate in front of coding agents: a Claude Code hook that scans before
+# any clone, pull, install or run, and a short instruction block in the agent
+# files on this machine. SNARE_NO_AGENTS=1 skips it; `snare agents uninstall`
+# removes it and stops `snare update` from putting it back.
+if [ -z "${SNARE_NO_AGENTS:-}" ]; then
+  echo
+  "$SRC/bin/snare" agents install 2>/dev/null || echo "  (agent gate not installed — run: snare agents install)"
+fi
+
 cat <<NEXT
 
 Done. Next:

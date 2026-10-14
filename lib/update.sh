@@ -413,6 +413,25 @@ cmd_update(){
 
   _snare_relink "$relink"
 
+  # Refresh the agent gate from the NEW code. This process still has the old
+  # libraries loaded — the first update to a version that has agents.sh has
+  # no such function at all — so it runs the updated binary instead. It
+  # installs the gate if it never was, refreshes it if it is, and leaves it
+  # alone if you uninstalled it (snare agents uninstall).
+  # An installed shield is a copy of old code in your shell profile. One
+  # version of it broke npm, pnpm, yarn, bun and npx for every coding agent, so
+  # an installed block is refreshed from the new code rather than left to rot.
+  local _rc; _rc="$(_shield_rc 2>/dev/null)"
+  if [ -n "$_rc" ] && grep -qF "$SHIELD_BEGIN" "$_rc" 2>/dev/null; then
+    "$SNARE_ROOT/bin/snare" shield install 2>/dev/null | grep -q 'refreshing' \
+      && dim "  shell shield refreshed in $_rc — open a new shell to load it"
+  fi
+
+  if [ -z "${SNARE_NO_AGENTS:-}" ] && "$SNARE_ROOT/bin/snare" agents sync >/dev/null 2>&1; then
+    grep -q 'gate --hook' "$HOME/.claude/settings.json" 2>/dev/null \
+      && dim "  agent gate refreshed — clones, pulls, installs and runs are scanned first"
+  fi
+
   # Updating the checkout does not update anything snare has installed
   # elsewhere. Those copies keep running old code, and in the shield's case an
   # old copy was silently WRONG rather than merely stale — so say what needs

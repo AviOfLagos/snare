@@ -3,7 +3,23 @@
 # https://github.com/  •  MIT
 set -uo pipefail
 
-SNARE_VERSION="1.4.3"
+SNARE_VERSION="1.5.0"
+
+# Fast path for the agent hook. It runs before EVERY shell command an agent
+# issues, so it must cost nothing when the command cannot bring code in or run
+# it — `ls`, `cat`, `rg`. Loading snare and two Python passes cost ~370ms;
+# this pure-bash pre-filter answers most calls in ~15ms. It can only say "not
+# mine": anything that mentions a trigger word goes to the full classifier, so
+# it over-matches (a path containing "node" is checked) and never under-matches.
+if [ "${1:-}" = gate ] && [ "${2#--hook}" != "${2:-}" ]; then
+  SNARE_HOOK_INPUT="$(cat)"
+  _trig='(^|[^A-Za-z0-9_.-])(npm|pnpm|yarn|bun|npx|bunx|pnpx|node|deno|next|vite|nuxt|tsx|ts-node|turbo|nx|astro|remix|electron)([^A-Za-z0-9_-]|$)'
+  # git only matters when it brings commits in: `git status` and `git diff`
+  # are most of what an agent runs, and they should not pay for a scan.
+  _gtrig='(^|[^A-Za-z0-9_.-])git[^A-Za-z0-9_-].*(clone|pull|merge|rebase|checkout|switch|reset)'
+  [[ $SNARE_HOOK_INPUT =~ $_trig ]] || [[ $SNARE_HOOK_INPUT =~ $_gtrig ]] || exit 0
+  export SNARE_HOOK_INPUT
+fi
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so
 # BASH_SOURCE is the link, not the real file. (readlink -f is not portable.)
 _src="${BASH_SOURCE[0]}"
@@ -54,6 +70,8 @@ fi
 . "$_dir/lib/hook.sh"
 . "$_dir/lib/ci.sh"
 . "$_dir/lib/shield.sh"
+. "$_dir/lib/gate.sh"
+. "$_dir/lib/agents.sh"
 . "$_dir/lib/rotate.sh"
 . "$_dir/lib/respond.sh"
 . "$_dir/lib/doctor.sh"
@@ -101,6 +119,10 @@ ${C_BLD}WATCH${C_OFF}
   snare baseline status | clear
 
 ${C_BLD}PREVENT${C_OFF}
+  snare agents install          make coding agents scan before they clone, pull, install or run
+  snare agents status | uninstall
+  snare agents install --project [dir]   also this repo's CLAUDE.md, AGENTS.md and hook
+  snare gate -- <command>       scan first; exit 0 means safe to run it
   snare shield install          scan before npm/pnpm/yarn/bun/git clone runs anything
   snare shield status | uninstall
   snare shield check [path]     the fast check on its own, without installing
@@ -176,6 +198,8 @@ main(){
     hook)   cmd_hook "$@" ;;
     ci)     cmd_ci "$@" ;;
     shield) cmd_shield "$@" ;;
+    gate)   cmd_gate "$@" ;;
+    agents) cmd_agents "$@" ;;
     rotate) cmd_rotate "$@" ;;
     # internal: the detached cache refresh behind the update nudge
     c2)     cmd_c2 "$@" ;;
