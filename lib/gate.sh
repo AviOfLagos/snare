@@ -30,6 +30,17 @@
 # unnoticed.
 
 GATE_LOG="$SNARE_LOGS/gate.log"
+
+# Every git call the gate makes runs INSIDE the repository it is checking,
+# and git obeys that repository's .git/config. A directory that arrives with
+# its own .git — an archive, a copied tree — can set core.fsmonitor, a
+# credential helper, an ssh command or a per-remote upload-pack, and the
+# first `git status` runs it. The gate must never execute what it is checking,
+# so these are pinned for every call it makes.
+GATE_GIT=(git -c core.fsmonitor=false -c core.hooksPath=/dev/null
+          -c core.sshCommand=ssh -c credential.helper= -c core.pager=cat
+          -c protocol.ext.allow=never -c core.untrackedCache=false
+          -c diff.external= -c core.askPass=)
 GATE_CACHE="$SNARE_HOME/gate-cache"
 GATE_TTL=900
 
@@ -151,12 +162,14 @@ def split_commands(text):
     text = re.sub(r"\\\n[ \t]*", " ", text)          # line continuations
     cmds, subs, buf, line_cmds, heredocs = [], [], [], [], []
     i, n, q = 0, len(text), None
+    piped = [False]          # the NEXT command reads from a pipe
 
-    def flush():
+    def flush(sep=""):
         c = "".join(buf).strip()
         if c:
-            cmds.append(c); line_cmds.append(c)
+            cmds.append(("\x00PIPE " if piped[0] else "") + c); line_cmds.append(c)
         buf.clear()
+        piped[0] = sep == "|"
 
     def read_sub(i, opener_len):
         j = match_paren(text, i + opener_len - 1)
@@ -207,7 +220,7 @@ def split_commands(text):
         if c == "&" and ((buf and buf[-1] in "<>") or text.startswith("&>", i)):
             buf.append(c); i += 1; continue
         if c in ";&|()\n":
-            flush()
+            flush("|" if c == "|" and not text.startswith("||", i) and text[i - 1:i] != "|" else "")
             if c == "\n" and heredocs:
                 words = set()
                 for lc in line_cmds:
@@ -251,6 +264,7 @@ def unresolved(a):
     return "$(" in a or "`" in a or bool(VAR.search(a))
 
 out, cur = [], cwd
+PIPED = [False]    # the command being handled reads a pipe
 IN_FILE = [0]      # >0 while reading a script file the command runs
 PRODUCED = set()   # directories an earlier clone in this command creates
 
@@ -264,7 +278,8 @@ def classify(text, depth=0):
         classify(sub, depth + 1)
         cur = saved
     for c in cmds:
-        argv = words(c)
+        PIPED[0] = c.startswith("\x00PIPE ")
+        argv = words(c[6:] if PIPED[0] else c)
         if argv and all(ENV.match(t) for t in argv):
             for t in argv:
                 k, v = t.split("=", 1)
@@ -324,8 +339,27 @@ def handle(argv, depth=0):
     if prog == "snare" and (args[:2] in (["gate", "allow"], ["gate", "forget"])
                             or args[:2] == ["agents", "uninstall"]):
         out.append("refuse\t%s\tsnare %s" % (cur, " ".join(args[:2]))); return
-    if any(re.search(r"\.snare/(gate-allow|agents-declined|gate-cache)", a) for a in argv):
-        out.append("refuse\t%s\twriting snare's own state" % cur); return
+    # Writing the user's real approval or opt-out files. Reading them is fine,
+    # and so is a different SNARE_HOME (a test, a fixture); a write to the
+    # real ones — a redirect, tee, cp, mv, rm, sed -i — is the agent deciding.
+    state = os.path.realpath(os.path.expanduser(os.environ.get("SNARE_HOME") or "~/.snare"))
+    def real_state(t):
+        t = os.path.expanduser(t)
+        if not re.search(r"(gate-allow|agents-declined|agents-migrated|gate-cache)", t):
+            return False
+        try:
+            return os.path.realpath(resolve(t, cur)).startswith(state + os.sep)
+        except Exception:
+            return False
+    writers = {"tee", "cp", "mv", "ln", "rm", "truncate", "dd", "install", "rsync",
+               "touch", "chmod", "unlink", "sed", "perl", "python", "python3", "node"}
+    for k, a in enumerate(argv):
+        if real_state(a) and ((k > 0 and argv[k - 1] in (">", ">>", "1>", "&>")) or prog in writers):
+            out.append("refuse\t%s\twriting snare's own state" % cur); return
+        if re.match(r"^\d?>>?", a) and real_state(re.sub(r"^\d?>>?", "", a)):
+            out.append("refuse\t%s\twriting snare's own state" % cur); return
+    if prog == "export" and any(re.match(r"^(GIT_[A-Z_]*|PAGER|LESSOPEN|EDITOR|VISUAL|NODE_OPTIONS|BASH_ENV|ENV|PROMPT_COMMAND|LD_PRELOAD|DYLD_[A-Z_]*)=", a) for a in args):
+        unknown(); return
     if prog in ALIASES:
         handle(shlex.split(ALIASES[prog]) + args, depth + 1); return
     if prog == "alias":
@@ -358,6 +392,9 @@ def handle(argv, depth=0):
         unknown(); return
 
     # Running a script file: what it runs is what matters, so read it.
+    if prog in SHELL_C and PIPED[0] and not any(a.startswith("-") and "c" in a[1:] for a in args) \
+            and not (args and not args[0].startswith("-")):
+        cannot("a shell running whatever is piped into it (curl … | sh)"); return
     script = None
     if prog in SHELL_C and args and not args[0].startswith("-"):
         script = args[0]
@@ -365,9 +402,16 @@ def handle(argv, depth=0):
         script = args[0] if args else None
     elif raw.startswith(("./", "../", "/", "~")) or prog.endswith(".sh"):
         script = raw
+    if script and os.path.basename(script) == "snare":
+        handle(["snare"] + (args[1:] if prog in SHELL_C or prog in ("source", ".") else args), depth + 1)
+        return
     if script:
         unknown()
         path = resolve(script, cur)
+        if not os.path.exists(path):
+            # Written by an earlier part of this same command — a download, a
+            # heredoc, a cp. It cannot be read before it exists.
+            cannot("%s, which does not exist until this command creates it" % script); return
         try:
             if os.path.isfile(path) and os.path.getsize(path) < 200000:
                 text = open(path, errors="replace").read()
@@ -408,6 +452,14 @@ def handle(argv, depth=0):
         # `git -c core.pager='npm install' log` runs the pager; -c can set any
         # program git will start (pager, editor, sshCommand, fsmonitor, diff
         # drivers, aliases with !). --ext-diff and difftool start one too.
+        # `git config core.hooksPath …`, `alias.x '!…'` and friends arm a
+        # program for a later command; only reading config is safe.
+        if sub == "config" and not any(a in ("--get", "--get-all", "--get-regexp", "-l", "--list",
+                                             "--show-origin", "--show-scope") for a in rest) \
+                and len([a for a in rest if not a.startswith("-")]) >= 2:
+            unknown(); return
+        if any(a.startswith(("--upload-pack", "--receive-pack", "--exec")) or a == "-u" for a in rest):
+            unknown(); return
         configured = any(a == "-c" or a.startswith("-c") and len(a) > 2 for a in args[:i]) \
             or any(a in ("--ext-diff", "--textconv", "--open-files-in-pager", "-O") or
                    a.startswith(("--open-files-in-pager=", "--exec=")) for a in rest)
@@ -415,6 +467,8 @@ def handle(argv, depth=0):
                                (sub == "stash" and rest[:1] in (["list"], ["show"])) or
                                (sub == "worktree" and rest[:1] == ["list"])):
             return
+        if sub == "clone" and any(a.startswith(("--upload-pack", "-u", "--template", "--config", "-c")) for a in rest):
+            cannot("git clone with an option that runs or installs a program"); return
         if sub == "clone":
             pos, branch, j = [], "", 0
             while j < len(rest):
@@ -623,9 +677,11 @@ for dirpath, dirnames, filenames in os.walk(root):
                 or (depth == 0 and f == ".gitignore")):
             routes.append(rp)
 
+PIN = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.pager=cat",
+       "-c", "credential.helper=", "-c", "core.sshCommand=ssh", "-c", "protocol.ext.allow=never"]
 def git(*a):
     try:
-        return subprocess.run(["git", "-C", root] + list(a), capture_output=True, text=True, timeout=10).stdout.strip()
+        return subprocess.run(["git"] + PIN + ["-C", root] + list(a), capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception:
         return ""
 
@@ -667,8 +723,10 @@ def short(s):
 def lines_of(data):
     return data.decode("utf-8", "replace").split("\n")
 
-def code_scan(rp, data):
-    """Hidden payloads and markers in a build config or a root-level script."""
+def code_scan(rp, data, src=False):
+    """Hidden payloads and markers. src=True is the wider source pass, where
+    ordinary code is far commoner than a payload, so a hidden tail must look
+    obfuscated and the long-line rule is off (minified bundles are legitimate)."""
     for n, ln in enumerate(lines_of(data), 1):
         stripped = ln.lstrip()
         comment = stripped.startswith(("*", "//", "#"))
@@ -676,8 +734,10 @@ def code_scan(rp, data):
         if m and not comment and len(ln) > 120:
             run = len(ln[m.start() + 1:]) - len(ln[m.start() + 1:].lstrip())
             tail = ln[m.start() + 1 + run:]
-            find(rp, n, "code hidden after %d spaces/tabs on this line" % run,
-                 "…" + short(tail)[:100], data); return
+            trailing_comment = tail.lstrip().startswith(("//", "/*", "*", "#"))
+            if not trailing_comment and (not src or OBF.search(tail) or len(tail) > 400):
+                find(rp, n, "code hidden after %d spaces/tabs on this line" % run,
+                     "…" + short(tail)[:100], data); return
         if WSFIRST.match(ln) and len(ln) > 200:
             find(rp, n, "the line opens with %d spaces/tabs, then code" % (len(ln) - len(stripped)),
                  short(stripped)[:100], data); return
@@ -687,7 +747,7 @@ def code_scan(rp, data):
             mm = IOC.search(ln); hit = mm.group(0) if mm else None
         if hit and not comment:
             find(rp, n, "known campaign marker: %s" % hit[:40], short(ln)[:100], data); return
-        if len(ln) > 5000 and OBF.search(ln):
+        if not src and len(ln) > 5000 and OBF.search(ln):
             find(rp, n, "one %d-character line of obfuscated code" % len(ln), short(ln)[:80], data); return
 
 def jsonc(data):
@@ -814,6 +874,66 @@ for rp in routes:
         continue
     code_scan(rp, data)
 
+# The source tree itself: campaign markers and code hidden past whitespace in
+# any script, not only the routes — a payload imported by the app runs too.
+# The routes-only first version dropped this, which the full scan had always
+# done. Bounded: source files only, pruned as above, at most 6000 files and
+# 64MB, and only ever adding findings.
+SRC = re.compile(r"\.(c|m)?(j|t)sx?$")
+seen_src, budget, nsrc = set(routes), 64 * 1024 * 1024, 0
+for dirpath, dirnames, filenames in os.walk(root):
+    rel = os.path.relpath(dirpath, root)
+    depth = 0 if rel == "." else rel.count(os.sep) + 1
+    dirnames[:] = [d for d in dirnames if d not in PRUNE and depth + 1 <= 10
+                   and (d if rel == "." else os.path.join(rel, d)) not in PRUNE_REL
+                   and not os.path.islink(os.path.join(dirpath, d))]
+    for f in filenames:
+        if not SRC.search(f):
+            continue
+        rp = (f if rel == "." else os.path.join(rel, f)).replace(os.sep, "/")
+        if rp in seen_src:
+            continue
+        nsrc += 1
+        if nsrc > 6000 or budget <= 0:
+            break
+        try:
+            data = open(os.path.join(root, rp), "rb").read(2 * 1024 * 1024)
+        except OSError:
+            continue
+        budget -= len(data)
+        code_scan(rp, data, src=True)
+        # A minified bundle is legitimately one long line; only a long line
+        # that ALSO carries a campaign marker or the hidden-whitespace shape
+        # was reported above, so nothing more is needed here.
+    if nsrc > 6000 or budget <= 0:
+        break
+
+# .git/hooks (and a configured core.hooksPath) run on commit, push, checkout.
+# A hook someone planted is a route like any other; a sample is not.
+hookdirs = [os.path.join(root, ".git", "hooks")]
+hp = git("config", "core.hooksPath")
+if hp and not hp.startswith(".husky"):
+    hookdirs.append(hp if os.path.isabs(hp) else os.path.join(root, hp))
+for hd in hookdirs:
+    try:
+        names = os.listdir(hd)
+    except OSError:
+        continue
+    for h in names:
+        hpth = os.path.join(hd, h)
+        if h.endswith(".sample") or not os.path.isfile(hpth) or not os.access(hpth, os.X_OK):
+            continue
+        try:
+            hdata = open(hpth, "rb").read(1024 * 1024)
+        except OSError:
+            continue
+        rel = os.path.relpath(hpth, root)
+        for n, ln in enumerate(lines_of(hdata), 1):
+            if BAD.search(ln) and not ln.lstrip().startswith("#"):
+                find(rel, n, "this git hook downloads or evaluates code", short(ln)[:100], hdata); break
+        else:
+            code_scan(rel, hdata)
+
 for f in findings:
     print("\t".join([f[0], str(f[1]), f[2], f[3], f[4]]))
 if findings:
@@ -872,7 +992,7 @@ _gate_clone(){ # $1=cwd $2=url $3=branch $4=1 when the clone recurses into submo
   q="$(mktemp -d "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snaregate.XXXXXX")" || return 2
   # Cloning runs nothing: hooks are never cloned, and hooksPath is pointed at
   # nothing besides. Submodules are left alone — they are their own clone.
-  if ! GIT_TERMINAL_PROMPT=0 git -c core.hooksPath=/dev/null clone -q --depth 1 \
+  if ! GIT_TERMINAL_PROMPT=0 "${GATE_GIT[@]}" clone -q --depth 1 \
         ${sub[@]+"${sub[@]}"} ${3:+-b "$3"} -- "$url" "$q/repo" >"$q/err" 2>&1; then
     echo "could not fetch $2 to check it first:"; sed 's/^/    /' "$q/err" | tail -3
     rm -rf "$q"; return 2
@@ -882,8 +1002,8 @@ _gate_clone(){ # $1=cwd $2=url $3=branch $4=1 when the clone recurses into submo
   # that empty directory and calling it clean is a verdict about code nobody
   # looked at. Fetch every branch tip and scan each one instead; the next
   # `git checkout <branch>` is exactly what would bring it in.
-  if ! git -C "$q/repo" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
-    GIT_TERMINAL_PROMPT=0 git -C "$q/repo" fetch --quiet --depth 1 origin \
+  if ! "${GATE_GIT[@]}" -C "$q/repo" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+    GIT_TERMINAL_PROMPT=0 "${GATE_GIT[@]}" -C "$q/repo" fetch --quiet --depth 1 origin \
       '+refs/heads/*:refs/remotes/origin/*' >/dev/null 2>&1
     local r worst=0 res
     while IFS= read -r r; do
@@ -894,7 +1014,7 @@ _gate_clone(){ # $1=cwd $2=url $3=branch $4=1 when the clone recurses into submo
         # A payload outranks "could not check": report the worse news.
         if [ "$rc" = 1 ]; then worst=1; elif [ "$worst" = 0 ]; then worst=$rc; fi
       fi
-    done < <(git -C "$q/repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null)
+    done < <("${GATE_GIT[@]}" -C "$q/repo" for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null)
     rm -rf "$q"; return "$worst"
   fi
   _gate_tree "$q/repo" nocache; rc=$?
@@ -903,24 +1023,24 @@ _gate_clone(){ # $1=cwd $2=url $3=branch $4=1 when the clone recurses into submo
 
 _gate_ref(){ # $1=dir $2=ref — scan a commit's tree without touching the working copy
   local sha q rc
-  sha="$(git -C "$1" rev-parse --verify --quiet "$2^{commit}" 2>/dev/null)"
+  sha="$("${GATE_GIT[@]}" -C "$1" rev-parse --verify --quiet "$2^{commit}" 2>/dev/null)"
   if [ -z "$sha" ]; then
     # `git checkout feat` / `git switch feat` with only <remote>/feat present
     # creates the branch from the remote copy. That is new code arriving, and
     # "rev-parse failed" used to be read as "not a ref" and let through.
     local dwim
-    dwim="$(git -C "$1" for-each-ref --format='%(refname)' "refs/remotes/*/$2" 2>/dev/null | head -1)"
+    dwim="$("${GATE_GIT[@]}" -C "$1" for-each-ref --format='%(refname)' "refs/remotes/*/$2" 2>/dev/null | head -1)"
     [ -n "$dwim" ] || return 0
-    sha="$(git -C "$1" rev-parse --verify --quiet "$dwim^{commit}" 2>/dev/null)" || return 0
+    sha="$("${GATE_GIT[@]}" -C "$1" rev-parse --verify --quiet "$dwim^{commit}" 2>/dev/null)" || return 0
   fi
-  [ "$sha" = "$(git -C "$1" rev-parse HEAD 2>/dev/null)" ] && return 0
+  [ "$sha" = "$("${GATE_GIT[@]}" -C "$1" rev-parse HEAD 2>/dev/null)" ] && return 0
   q="$(mktemp -d "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snaregate.XXXXXX")" || return 2
-  if ! git -C "$1" -c core.hooksPath=/dev/null worktree add --quiet --detach "$q/wt" "$sha" >/dev/null 2>&1; then
+  if ! "${GATE_GIT[@]}" -C "$1" -c core.hooksPath=/dev/null worktree add --quiet --detach "$q/wt" "$sha" >/dev/null 2>&1; then
     rm -rf "$q"; echo "could not check out $2 to scan it"; return 2
   fi
   _gate_tree "$q/wt" nocache; rc=$?
-  git -C "$1" worktree remove --force "$q/wt" >/dev/null 2>&1
-  rm -rf "$q"; git -C "$1" worktree prune >/dev/null 2>&1
+  "${GATE_GIT[@]}" -C "$1" worktree remove --force "$q/wt" >/dev/null 2>&1
+  rm -rf "$q"; "${GATE_GIT[@]}" -C "$1" worktree prune >/dev/null 2>&1
   return "$rc"
 }
 
@@ -929,14 +1049,14 @@ _gate_submodules(){ # $1=dir — each submodule at the commit the repo pins
   [ -f "$dir/.gitmodules" ] || return 0
   while IFS=' ' read -r key path; do
     [ -z "$path" ] && continue
-    url="$(git -C "$dir" config -f .gitmodules --get "${key%.path}.url" 2>/dev/null)"
-    sha="$(git -C "$dir" ls-tree HEAD -- "$path" 2>/dev/null | awk '{print $3}')"
+    url="$("${GATE_GIT[@]}" -C "$dir" config -f .gitmodules --get "${key%.path}.url" 2>/dev/null)"
+    sha="$("${GATE_GIT[@]}" -C "$dir" ls-tree HEAD -- "$path" 2>/dev/null | awk '{print $3}')"
     [ -n "$url" ] && [ -n "$sha" ] || continue
-    case "$url" in ./*|../*) url="$(git -C "$dir" remote get-url origin 2>/dev/null)/$url" ;; esac
+    case "$url" in ./*|../*) url="$("${GATE_GIT[@]}" -C "$dir" remote get-url origin 2>/dev/null)/$url" ;; esac
     q="$(mktemp -d "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snaregate.XXXXXX")" || return 2
-    if git init -q "$q/s" && GIT_TERMINAL_PROMPT=0 git -C "$q/s" -c core.hooksPath=/dev/null \
+    if git init -q "$q/s" && GIT_TERMINAL_PROMPT=0 "${GATE_GIT[@]}" -C "$q/s" \
          fetch -q --depth 1 -- "$url" "$sha" >/dev/null 2>&1 \
-       && git -C "$q/s" -c core.hooksPath=/dev/null checkout -q FETCH_HEAD >/dev/null 2>&1; then
+       && "${GATE_GIT[@]}" -C "$q/s" -c core.hooksPath=/dev/null checkout -q FETCH_HEAD >/dev/null 2>&1; then
       res="$(_gate_tree "$q/s" nocache)"; rc=$?
     else
       res="could not fetch submodule $path ($url) at $sha"; rc=2
@@ -946,22 +1066,22 @@ _gate_submodules(){ # $1=dir — each submodule at the commit the repo pins
       printf '%s\n' "submodule $path:" "$res"
       if [ "$rc" = 1 ]; then worst=1; elif [ "$worst" = 0 ]; then worst=$rc; fi
     fi
-  done < <(git -C "$dir" config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null)
+  done < <("${GATE_GIT[@]}" -C "$dir" config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null)
   return "$worst"
 }
 
 _gate_pull(){ # $1=dir  $2.. = remote [branch]
   local dir="$1" ref rc; shift
-  git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  "${GATE_GIT[@]}" -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
   # Fetching runs nothing; it is merging the result into your tree that does.
   if [ $# -gt 0 ] && [ -n "$1" ]; then
-    GIT_TERMINAL_PROMPT=0 git -C "$dir" fetch --quiet "$@" 2>/dev/null \
+    GIT_TERMINAL_PROMPT=0 "${GATE_GIT[@]}" -C "$dir" fetch --quiet "$@" 2>/dev/null \
       || { echo "could not fetch $* to check it first"; return 2; }
     ref=FETCH_HEAD
   else
-    GIT_TERMINAL_PROMPT=0 git -C "$dir" fetch --quiet 2>/dev/null \
+    GIT_TERMINAL_PROMPT=0 "${GATE_GIT[@]}" -C "$dir" fetch --quiet 2>/dev/null \
       || { echo "could not fetch to check it first"; return 2; }
-    ref="$(git -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"
+    ref="$("${GATE_GIT[@]}" -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"
     [ -n "$ref" ] || return 0
   fi
   _gate_ref "$dir" "$ref"; rc=$?
@@ -988,7 +1108,7 @@ _gate_decide(){
               # and a package manager reads only this directory's own
               # package.json. Scanning a bare /tmp recursively took 8s and
               # reported code in unrelated subdirectories as this command's.
-              if ! git -C "$a" rev-parse --git-dir >/dev/null 2>&1 && [ ! -f "$a/package.json" ]; then
+              if ! "${GATE_GIT[@]}" -C "$a" rev-parse --git-dir >/dev/null 2>&1 && [ ! -f "$a/package.json" ]; then
                 continue
               fi
               res="$(_gate_tree "$a")"; rc=$? ; what="$a" ;;
@@ -998,7 +1118,7 @@ _gate_decide(){
       unknown)
               # Something that may run repository code, by a route no list
               # can name. Scan the repository it runs in — once per repo.
-              local top; top="$(git -C "$a" rev-parse --show-toplevel 2>/dev/null)"
+              local top; top="$("${GATE_GIT[@]}" -C "$a" rev-parse --show-toplevel 2>/dev/null)"
               [ -n "$top" ] || continue          # not a repository: no committed payload
               case " $seen_top " in *" $top "*) continue ;; esac
               seen_top="$seen_top $top"
@@ -1113,7 +1233,7 @@ _gate_allow_record(){ # $1=fingerprint $2=repo $3=path $4=what
 _gate_allow(){
   local dir="${1:-$PWD}" lit out rc path line what ex fp ans n=0 added=0
   dir="$(cd "$dir" 2>/dev/null && pwd -P)" || die "no such directory: ${1:-}"
-  local top; top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && dir="$top"
+  local top; top="$("${GATE_GIT[@]}" -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && dir="$top"
   _gate_person_only "snare gate allow" || return 1
   lit="$(mktemp "${TMPDIR:-/tmp}/snareioc.XXXXXX")" || return 1
   ioc_literals > "$lit"
@@ -1151,7 +1271,7 @@ _gate_forget(){ # $1 = dir, or "all"
   _gate_person_only "snare gate forget" || return 1
   if [ "${1:-}" = all ]; then : > "$GATE_ALLOW"; grn "  all approvals removed"; return 0; fi
   local dir; dir="$(cd "${1:-$PWD}" 2>/dev/null && pwd -P)" || die "no such directory"
-  local top; top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && dir="$top"
+  local top; top="$("${GATE_GIT[@]}" -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && dir="$top"
   awk -v d="$dir" '$2 != d' "$GATE_ALLOW" > "$GATE_ALLOW.tmp" && mv "$GATE_ALLOW.tmp" "$GATE_ALLOW"
   grn "  approvals for $dir removed — it will be checked from scratch"
 }

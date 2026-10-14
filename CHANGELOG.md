@@ -117,6 +117,45 @@ stops. This is built to stop a *misled* agent; a process that is already
 hostile and running its own code on the machine is beyond what any scanner
 can stop.
 
+### Fixed — the gate could run the code it was checking
+
+To decide what to check, the gate runs `git` inside the repository — and git
+obeys that repository's own `.git/config`. A directory that arrives with its
+own `.git` (an archive, a copied tree) can set `core.fsmonitor`, a credential
+helper, an ssh command or a per-remote upload-pack, and the first `git` call
+runs it. A safety check must never execute what it checks: every git call the
+gate makes now pins those off, and a selftest plants an `fsmonitor` that
+would create a file and asserts it never appears.
+
+### Fixed — more ways past the gate, from further review passes
+
+- `curl … | bash` runs whatever arrives; it is reported as unverifiable,
+  for the person to decide.
+- `curl -o x.sh … && bash x.sh`: the script does not exist until the same
+  command creates it, so it cannot be read in advance — unverifiable.
+- `git fetch --upload-pack=…` and `--receive-pack` run a program for a local
+  remote; `git config` writes (`core.hooksPath`, `alias.x '!…'`) arm one for
+  later; `export NODE_OPTIONS=…` and similar arm the next command. All are
+  checked now — and the fast path no longer waves through any command with a
+  quote or an exec-style option.
+- A planted script in `.git/hooks` (or a configured `core.hooksPath`) fires
+  on the next commit, and is now read like any other route.
+- `bash /path/to/snare gate allow` is still snare, and is still refused.
+- An agent's own file tools never pass through the shell hook, so it could
+  have written an approval straight into `~/.snare/gate-allow`. `snare agents
+  install` now adds Claude Code permission rules denying the agent `Edit` and
+  `Write` on `~/.snare`, which Claude Code enforces on every tool; they are
+  removed on uninstall, and your other permissions are left exactly as they
+  were. Writing that directory from the shell is refused by the gate — reading
+  it is fine, and so is any other `SNARE_HOME`.
+- **The narrower check had dropped coverage.** It only looked at routes, so
+  a payload hidden in an ordinary source file the app imports — which the
+  full scan always found — went unseen. A bounded pass over the source (6000
+  files, 64MB) now looks for campaign markers and code hidden past
+  whitespace, requiring the hidden part to look obfuscated so aligned
+  comments and minified bundles are not reported. Re-measured on all 67 local
+  repositories: still no false alarms.
+
 ### Fixed — the gate's check was the full scan, and timed out
 
 The gate reused `snare scan repo`, which greps every file. On a real

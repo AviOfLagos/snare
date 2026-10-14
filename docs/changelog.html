@@ -145,6 +145,23 @@ snare update && snare selftest</pre></div></div>
       </ul>
     </div>
     <div class="rel-group">
+      <h3>Fixed — the gate could run the code it was checking</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — more ways past the gate, from further review passes</h3>
+      <ul class="rel-list">
+        <li><code>curl … | bash</code> runs whatever arrives; it is reported as unverifiable, for the person to decide.</li>
+        <li><code>curl -o x.sh … &amp;&amp; bash x.sh</code>: the script does not exist until the same command creates it, so it cannot be read in advance — unverifiable.</li>
+        <li><code>git fetch --upload-pack=…</code> and <code>--receive-pack</code> run a program for a local remote; <code>git config</code> writes (<code>core.hooksPath</code>, <code>alias.x '!…'</code>) arm one for later; <code>export NODE_OPTIONS=…</code> and similar arm the next command. All are checked now — and the fast path no longer waves through any command with a quote or an exec-style option.</li>
+        <li>A planted script in <code>.git/hooks</code> (or a configured <code>core.hooksPath</code>) fires on the next commit, and is now read like any other route.</li>
+        <li><code>bash /path/to/snare gate allow</code> is still snare, and is still refused.</li>
+        <li>An agent's own file tools never pass through the shell hook, so it could have written an approval straight into <code>~/.snare/gate-allow</code>. <code>snare agents install</code> now adds Claude Code permission rules denying the agent <code>Edit</code> and <code>Write</code> on <code>~/.snare</code>, which Claude Code enforces on every tool; they are removed on uninstall, and your other permissions are left exactly as they were. Writing that directory from the shell is refused by the gate — reading it is fine, and so is any other <code>SNARE_HOME</code>.</li>
+        <li><strong>The narrower check had dropped coverage.</strong> It only looked at routes, so a payload hidden in an ordinary source file the app imports — which the full scan always found — went unseen. A bounded pass over the source (6000 files, 64MB) now looks for campaign markers and code hidden past whitespace, requiring the hidden part to look obfuscated so aligned comments and minified bundles are not reported. Re-measured on all 67 local repositories: still no false alarms.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
       <h3>Fixed — the gate's check was the full scan, and timed out</h3>
       <ul class="rel-list">
       </ul>

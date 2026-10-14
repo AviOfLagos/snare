@@ -100,6 +100,24 @@ else:
     hooks.pop("PreToolUse", None)
 if not hooks:
     d.pop("hooks", None)
+# The shell hook never sees an agent's own file tools, so an agent could write
+# an approval straight into the approvals file. Claude Code's permission rules
+# apply to every tool and the agent cannot override them, so the gate's own
+# state is denied to it here. Ours are exact strings, removed on uninstall.
+DENY = ["Edit(~/.snare/**)", "Write(~/.snare/**)"]
+perms = d.get("permissions") if isinstance(d.get("permissions"), dict) else {}
+deny = [r for r in (perms.get("deny") or []) if r not in DENY]
+if op == "add":
+    deny += DENY
+if deny:
+    perms["deny"] = deny
+else:
+    perms.pop("deny", None)
+if perms:
+    d["permissions"] = perms
+else:
+    d.pop("permissions", None)
+changed = True   # whether anything changed is decided against the file below
 new = json.dumps(d, indent=2) + "\n"
 if os.path.exists(path) and open(path).read() == new:
     print("SAME"); sys.exit(0)
