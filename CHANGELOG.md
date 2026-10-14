@@ -156,6 +156,30 @@ would create a file and asserts it never appears.
   comments and minified bundles are not reported. Re-measured on all 67 local
   repositories: still no false alarms.
 
+### Fixed — a sixth review pass
+
+- **A repository could exempt itself.** The route check skipped any
+  directory holding a `.snare-tool` file, as snare's own source does — so a
+  repository that shipped that one empty file was never checked. Only snare's
+  actual install is exempt now.
+- **A cached clean outlived a source change.** The source pass reads every
+  script, but the cache key only covered the routes; it now covers every file
+  the check reads.
+- **`n\<newline>pm install`** is `npm install` to bash, which deletes a
+  backslash-newline; the tokenizer had turned it into a space.
+- **A redirect glued to a word** — `echo x>~/.snare/gate-allow` — and an
+  interpreter writing snare's state from inside a quoted string were not seen
+  as writes. Any write into the state directory, not only the named files, is
+  refused. (An HMAC over approvals was considered and not done: on a
+  single-user machine there is nowhere to keep the key that the agent cannot
+  also read, so the boundary that holds is Claude Code's deny rules.)
+
+Found by the gate refusing its own author's harness: a script that merely
+**sources** a library was read as if the library's function bodies ran, so
+sourcing snare's own `lib/` looked like writing snare's state. The gate now
+reads the script a command runs, not the libraries that script sources, and
+never reads snare's own install as untrusted code.
+
 ### Fixed — the gate's check was the full scan, and timed out
 
 The gate reused `snare scan repo`, which greps every file. On a real

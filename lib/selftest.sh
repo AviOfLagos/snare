@@ -228,6 +228,7 @@ JSON
   _st_gate_bypasses
   _st_gate_decide
   _st_gate_round5
+  _st_gate_round6
   _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
@@ -1040,7 +1041,7 @@ _st_gate_decide(){
 
   # ---- a person's approval is honoured, and is tied to the file's content
   local lit p w fp; lit="$(mktemp "${TMPDIR:-/tmp}/snareioc.XXXXXX")"; ioc_literals > "$lit"
-  python3 -c "$(_gate_routes_py)" "$D/bad" "$lit" "$(ioc_regexes)" /dev/null /dev/null x 1 2>/dev/null \
+  python3 -c "$(_gate_routes_py)" "$D/bad" "$lit" "$(ioc_regexes)" /dev/null /dev/null x 1 "$SNARE_ROOT" 2>/dev/null \
     | while IFS="$(printf '\t')" read -r p _ w _ fp; do _gate_allow_record "$fp" "$D/bad" "$p" "$w"; done
   rm -f "$lit"
   _sth "$D/bad" "npm run dev" >/dev/null; rc=$?
@@ -1099,4 +1100,47 @@ _st_gate_round5(){
   else _st_bad "piped installers, not-yet-written scripts, git exec options — got through:$miss"; fi
   unset SNARE_NO_NOTIFY
   rm -rf "$D"
+}
+
+# ------------------------------------------------------------ round six
+_st_gate_round6(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snareg6.XXXXXX")" || return 0
+  D="$(cd "$D" && pwd)"
+  local SNARE_NO_NOTIFY=1; export SNARE_NO_NOTIFY
+  _stj(){ python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"; }
+  _sth(){ _stj "$1" "$2" | SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; }
+  _sti(){ ( cd "$1" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm i ) >/dev/null 2>&1; }
+  mkdir -p "$D/bad"
+  printf '{"name":"v","scripts":{"dev":"node api.js && next dev"}}\n' > "$D/bad/package.json"
+  python3 -c "open('$D/bad/api.js','w').write('var _0xaf=[];'+'x'*29000)"
+  : > "$D/bad/.snare-tool"; _sti "$D/bad"
+  _sth "$D/bad" "npm run dev"
+  if [ $? = 2 ]; then _st_ok "a repository that ships a .snare-tool marker is not exempted"
+  else _st_bad "a repository that ships a .snare-tool marker is not exempted"; fi
+
+  # A cached clean must not survive a change to a source file the check reads.
+  mkdir -p "$D/src/lib"; printf '{"name":"s","scripts":{"dev":"next dev"}}\n' > "$D/src/package.json"
+  printf 'export const a = 1;\n' > "$D/src/lib/u.js"; _sti "$D/src"
+  _sth "$D/src" "npm run dev"
+  python3 -c "open('$D/src/lib/u.js','w').write('export const a=1;'+' '*300+'var _0xab12=[1];eval(atob(\"eA==\"));\n')"
+  _sth "$D/src" "npm run dev"
+  if [ $? = 2 ]; then _st_ok "a cached clean verdict lapses when a source file changes"
+  else _st_bad "a cached clean verdict lapses when a source file changes"; fi
+
+  local c miss=""
+  for c in "$(printf 'n\\\npm install')" "echo x>$D/.snare/gate-allow" \
+           "python3 -c \"open('$D/.snare/gate-allow','a').write('x')\"" "rm -rf $D/.snare"; do
+    _sth "$D/bad" "$c"; [ $? = 2 ] || miss="$miss [$(printf '%s' "$c" | tr '\n' ' ')]"
+  done
+  # The other direction: a script that only SOURCES a library which writes
+  # snare's state is not doing the writing. Reading libraries as if their
+  # function bodies ran refused the author's own harness.
+  mkdir -p "$D/h"; printf 'mv x "$HOME/.snare/gate-cache.tmp"\n' > "$D/h/lib.sh"
+  printf '. %s/h/lib.sh\necho done\n' "$D" > "$D/h/run.sh"
+  _sth "$D/h" "bash run.sh"
+  if [ $? = 0 ]; then _st_ok "a script is read for what it runs, not for the libraries it sources"
+  else _st_bad "a script is read for what it runs, not for the libraries it sources"; fi
+  if [ -z "$miss" ]; then _st_ok "line continuations, glued redirects and interpreter writes to snare's state are caught"
+  else _st_bad "continuations, glued redirects, interpreter writes — got through:$miss"; fi
+  unset SNARE_NO_NOTIFY; rm -rf "$D"
 }

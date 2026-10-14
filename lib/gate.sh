@@ -55,6 +55,7 @@ _gate_py(){
 import os, re, shlex, sys
 
 cmd, cwd = sys.argv[1], sys.argv[2]
+SELFROOT = os.path.realpath(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else ""
 ENV = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 WRAPPERS = {"sudo", "time", "env", "nohup", "exec", "command", "builtin",
             "nice", "caffeinate", "stdbuf", "timeout", "gtimeout", "doas"}
@@ -159,7 +160,7 @@ def split_commands(text):
     on the same line reads them (`bash <<EOF`, `cat <<EOF | sh`), dropped as
     data otherwise.
     """
-    text = re.sub(r"\\\n[ \t]*", " ", text)          # line continuations
+    text = re.sub(r"\\\n", "", text)   # bash deletes it: n\<newline>pm is npm
     cmds, subs, buf, line_cmds, heredocs = [], [], [], [], []
     i, n, q = 0, len(text), None
     piped = [False]          # the NEXT command reads from a pipe
@@ -343,20 +344,36 @@ def handle(argv, depth=0):
     # and so is a different SNARE_HOME (a test, a fixture); a write to the
     # real ones — a redirect, tee, cp, mv, rm, sed -i — is the agent deciding.
     state = os.path.realpath(os.path.expanduser(os.environ.get("SNARE_HOME") or "~/.snare"))
+    home = os.path.expanduser("~")
+    # Any path into the state DIRECTORY counts, not only the named files —
+    # replacing gate-cache or the whole directory is the same decision.
     def real_state(t):
-        t = os.path.expanduser(t)
-        if not re.search(r"(gate-allow|agents-declined|agents-migrated|gate-cache)", t):
+        t = os.path.expanduser(t.strip("'\""))
+        if not t:
             return False
         try:
-            return os.path.realpath(resolve(t, cur)).startswith(state + os.sep)
+            p = os.path.realpath(resolve(t, cur))
         except Exception:
             return False
+        return p == state or p.startswith(state + os.sep)
+    # Spellings of the state directory that can appear inside a larger token:
+    # a python -c string, a node -e string, an sh -c script.
+    spellings = {state, "~/.snare", "$HOME/.snare", "${HOME}/.snare"}
+    if state.startswith(home + os.sep):
+        spellings.add("~" + state[len(home):])
     writers = {"tee", "cp", "mv", "ln", "rm", "truncate", "dd", "install", "rsync",
-               "touch", "chmod", "unlink", "sed", "perl", "python", "python3", "node"}
+               "touch", "chmod", "unlink", "sed", "perl", "python", "python3", "node",
+               "ruby", "php", "osascript", "awk", "gawk", "deno", "bun", "tar", "unzip"}
     for k, a in enumerate(argv):
-        if real_state(a) and ((k > 0 and argv[k - 1] in (">", ">>", "1>", "&>")) or prog in writers):
+        # A redirect anywhere in a token: `echo x>~/.snare/gate-allow` is one
+        # word to the tokenizer, and only checking its start missed it.
+        for m in re.finditer(r"\d?&?>>?\|?", a):
+            target = a[m.end():].split(">")[0]
+            if real_state(target):
+                out.append("refuse\t%s\twriting snare's own state" % cur); return
+        if k > 0 and argv[k - 1] in (">", ">>", "1>", "2>", "&>", ">|") and real_state(a):
             out.append("refuse\t%s\twriting snare's own state" % cur); return
-        if re.match(r"^\d?>>?", a) and real_state(re.sub(r"^\d?>>?", "", a)):
+        if prog in writers and (real_state(a) or any(sp in a for sp in spellings)):
             out.append("refuse\t%s\twriting snare's own state" % cur); return
     if prog == "export" and any(re.match(r"^(GIT_[A-Z_]*|PAGER|LESSOPEN|EDITOR|VISUAL|NODE_OPTIONS|BASH_ENV|ENV|PROMPT_COMMAND|LD_PRELOAD|DYLD_[A-Z_]*)=", a) for a in args):
         unknown(); return
@@ -408,6 +425,14 @@ def handle(argv, depth=0):
     if script:
         unknown()
         path = resolve(script, cur)
+        # Read the script the command runs — not the libraries THAT script
+        # sources. Sourcing a library defines functions; it does not run their
+        # bodies, and reading them as if it did made a harness that sources
+        # snare's own lib/ look like it was writing snare's state. And snare's
+        # own install is never read as untrusted code.
+        rp_ = os.path.realpath(path)
+        if IN_FILE[0] >= 1 or (SELFROOT and (rp_ == SELFROOT or rp_.startswith(SELFROOT + os.sep))):
+            return
         if not os.path.exists(path):
             # Written by an earlier part of this same command — a download, a
             # heredoc, a cp. It cannot be read before it exists.
@@ -625,10 +650,13 @@ _gate_cache_put(){
 _gate_routes_py(){
   cat <<'PYROUTES'
 import hashlib, json, os, re, subprocess, sys, time
-root, litf, rx, cachef, allowf, ver, nocache = sys.argv[1:8]
+root, litf, rx, cachef, allowf, ver, nocache, selfroot = sys.argv[1:9]
 root = os.path.realpath(root)
-if os.path.exists(os.path.join(root, ".snare-tool")):
-    sys.exit(0)          # snare's own source quotes every marker it detects
+# snare's own source quotes every marker it detects, so its install is
+# exempt — but only its install. A repository that merely ships a .snare-tool
+# file was exempted too, which is a one-file way past the gate.
+if os.path.exists(os.path.join(root, ".snare-tool")) and root == os.path.realpath(selfroot):
+    sys.exit(0)
 
 PRUNE = {"node_modules", ".git", ".next", ".nuxt", ".turbo", ".svelte-kit",
          ".output", ".vercel", ".cache", "coverage", ".parcel-cache", ".yarn",
@@ -679,6 +707,20 @@ for dirpath, dirnames, filenames in os.walk(root):
 
 PIN = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.pager=cat",
        "-c", "credential.helper=", "-c", "core.sshCommand=ssh", "-c", "protocol.ext.allow=never"]
+SRC = re.compile(r"\.(c|m)?(j|t)sx?$")
+srcfiles = []
+for dirpath, dirnames, filenames in os.walk(root):
+    rel = os.path.relpath(dirpath, root)
+    depth = 0 if rel == "." else rel.count(os.sep) + 1
+    dirnames[:] = [d for d in dirnames if d not in PRUNE and depth + 1 <= 10
+                   and (d if rel == "." else os.path.join(rel, d)) not in PRUNE_REL
+                   and not os.path.islink(os.path.join(dirpath, d))]
+    for f in filenames:
+        if SRC.search(f):
+            srcfiles.append((f if rel == "." else os.path.join(rel, f)).replace(os.sep, "/"))
+    if len(srcfiles) > 6000:
+        break
+
 def git(*a):
     try:
         return subprocess.run(["git"] + PIN + ["-C", root] + list(a), capture_output=True, text=True, timeout=10).stdout.strip()
@@ -691,7 +733,7 @@ try:
     key_src.append(str(os.stat(allowf).st_mtime_ns))
 except OSError:
     pass
-for r in sorted(routes):
+for r in sorted(set(routes) | set(srcfiles[:6000])):
     try:
         st = os.stat(os.path.join(root, r)); key_src.append("%s %d %d" % (r, st.st_size, st.st_mtime_ns))
     except OSError:
@@ -879,34 +921,16 @@ for rp in routes:
 # The routes-only first version dropped this, which the full scan had always
 # done. Bounded: source files only, pruned as above, at most 6000 files and
 # 64MB, and only ever adding findings.
-SRC = re.compile(r"\.(c|m)?(j|t)sx?$")
-seen_src, budget, nsrc = set(routes), 64 * 1024 * 1024, 0
-for dirpath, dirnames, filenames in os.walk(root):
-    rel = os.path.relpath(dirpath, root)
-    depth = 0 if rel == "." else rel.count(os.sep) + 1
-    dirnames[:] = [d for d in dirnames if d not in PRUNE and depth + 1 <= 10
-                   and (d if rel == "." else os.path.join(rel, d)) not in PRUNE_REL
-                   and not os.path.islink(os.path.join(dirpath, d))]
-    for f in filenames:
-        if not SRC.search(f):
-            continue
-        rp = (f if rel == "." else os.path.join(rel, f)).replace(os.sep, "/")
-        if rp in seen_src:
-            continue
-        nsrc += 1
-        if nsrc > 6000 or budget <= 0:
-            break
-        try:
-            data = open(os.path.join(root, rp), "rb").read(2 * 1024 * 1024)
-        except OSError:
-            continue
-        budget -= len(data)
-        code_scan(rp, data, src=True)
-        # A minified bundle is legitimately one long line; only a long line
-        # that ALSO carries a campaign marker or the hidden-whitespace shape
-        # was reported above, so nothing more is needed here.
-    if nsrc > 6000 or budget <= 0:
-        break
+seen_src, budget = set(routes), 64 * 1024 * 1024
+for rp in srcfiles[:6000]:
+    if rp in seen_src or budget <= 0:
+        continue
+    try:
+        data = open(os.path.join(root, rp), "rb").read(2 * 1024 * 1024)
+    except OSError:
+        continue
+    budget -= len(data)
+    code_scan(rp, data, src=True)
 
 # .git/hooks (and a configured core.hooksPath) run on commit, push, checkout.
 # A hook someone planted is a route like any other; a sample is not.
@@ -963,7 +987,7 @@ _gate_tree(){
   lit="$(mktemp "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snareioc.XXXXXX")" || return 2
   ioc_literals > "$lit"
   out="$(python3 -c "$(_gate_routes_py)" "$dir" "$lit" "$(ioc_regexes)" \
-          "$GATE_CACHE" "$GATE_ALLOW" "$SNARE_VERSION" "${2:+1}" 2>&1)"; rc=$?
+          "$GATE_CACHE" "$GATE_ALLOW" "$SNARE_VERSION" "${2:+1}" "$SNARE_ROOT" 2>&1)"; rc=$?
   rm -f "$lit"
   [ "$rc" = 0 ] && return 0
   if [ "$rc" = 1 ]; then
@@ -1096,7 +1120,7 @@ _gate_log(){ mkdir -p "$SNARE_LOGS" 2>/dev/null; echo "$(date '+%Y-%m-%dT%H:%M:%
 # $1 = command, $2 = cwd. Prints the verdict on stdout. 0 allow, 1 block.
 _gate_decide(){
   local cmd="$1" cwd="$2" actions kind a b c d rc what seen_top="" out=() blocked=0 cant=0
-  actions="$(python3 -c "$(_gate_py)" "$cmd" "$cwd" 2>/dev/null)" || {
+  actions="$(python3 -c "$(_gate_py)" "$cmd" "$cwd" "$SNARE_ROOT" 2>/dev/null)" || {
     out+=("could not parse the command, so it was not checked")
     cant=1; }
   while IFS="$(printf '\t')" read -r kind a b c d; do
@@ -1237,7 +1261,7 @@ _gate_allow(){
   _gate_person_only "snare gate allow" || return 1
   lit="$(mktemp "${TMPDIR:-/tmp}/snareioc.XXXXXX")" || return 1
   ioc_literals > "$lit"
-  out="$(python3 -c "$(_gate_routes_py)" "$dir" "$lit" "$(ioc_regexes)" /dev/null /dev/null "$SNARE_VERSION" 1 2>&1)"; rc=$?
+  out="$(python3 -c "$(_gate_routes_py)" "$dir" "$lit" "$(ioc_regexes)" /dev/null /dev/null "$SNARE_VERSION" 1 "$SNARE_ROOT" 2>&1)"; rc=$?
   rm -f "$lit"
   if [ "$rc" = 0 ]; then grn "  nothing to allow — $dir is clean"; return 0; fi
   hdr "snare gate allow — $dir"

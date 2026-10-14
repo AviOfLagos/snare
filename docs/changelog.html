@@ -162,6 +162,15 @@ snare update && snare selftest</pre></div></div>
       </ul>
     </div>
     <div class="rel-group">
+      <h3>Fixed — a sixth review pass</h3>
+      <ul class="rel-list">
+        <li><strong>A repository could exempt itself.</strong> The route check skipped any directory holding a <code>.snare-tool</code> file, as snare's own source does — so a repository that shipped that one empty file was never checked. Only snare's actual install is exempt now.</li>
+        <li><strong>A cached clean outlived a source change.</strong> The source pass reads every script, but the cache key only covered the routes; it now covers every file the check reads.</li>
+        <li><strong><code>n\&lt;newline&gt;pm install</code></strong> is <code>npm install</code> to bash, which deletes a backslash-newline; the tokenizer had turned it into a space.</li>
+        <li><strong>A redirect glued to a word</strong> — <code>echo x&gt;~/.snare/gate-allow</code> — and an interpreter writing snare's state from inside a quoted string were not seen as writes. Any write into the state directory, not only the named files, is refused. (An HMAC over approvals was considered and not done: on a single-user machine there is nowhere to keep the key that the agent cannot also read, so the boundary that holds is Claude Code's deny rules.)</li>
+      </ul>
+    </div>
+    <div class="rel-group">
       <h3>Fixed — the gate's check was the full scan, and timed out</h3>
       <ul class="rel-list">
       </ul>
