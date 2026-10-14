@@ -19,7 +19,8 @@ if [ "${1:-}" = gate ] && [ "${2#--hook}" != "${2:-}" ]; then
   [[ $SNARE_HOOK_INPUT =~ $_re ]] && _c="${BASH_REMATCH[1]}"
   _triv='^[[:space:]]*(ls|cat|head|tail|wc|pwd|echo|rg|grep|stat|file|which|type|tree|du|df|diff|sort|uniq|cut|jq|date|whoami|git[[:space:]]+(status|diff|log|show|branch|rev-parse|ls-files|remote|blame|grep|describe|tag|fetch|reflog|shortlog))([[:space:]]|$)'
   _meta='[;&|<>()`$]|\\[ntr"]|[{}]'
-  if [ -n "$_c" ] && [[ $_c =~ $_triv ]] && ! [[ $_c =~ $_meta ]]; then
+  _flag='(^|[[:space:]])(--pre|--exec|-x|-X|--compress-program)([=[:space:]]|$)'
+  if [ -n "$_c" ] && [[ $_c =~ $_triv ]] && ! [[ $_c =~ $_meta ]] && ! [[ $_c =~ $_flag ]]; then
     exit 0
   fi
   export SNARE_HOOK_INPUT

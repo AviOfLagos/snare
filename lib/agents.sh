@@ -219,7 +219,14 @@ _agents_install(){
   dim "  Remove it:  snare agents uninstall"
 }
 
+# Removing the gate is the user's decision, so the command checks for a
+# person; _agents_remove does the work and is what the selftest exercises.
 _agents_uninstall(){
+  _gate_person_only "snare agents uninstall" || return 1
+  _agents_remove "$@"
+}
+
+_agents_remove(){
   local project="" f v
   [ "${1:-}" = --project ] && project="${2:-$PWD}"
   hdr "snare agents — removing"

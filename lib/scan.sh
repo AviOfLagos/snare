@@ -213,7 +213,19 @@ for k,v in s.items():
       [ -f "$dr" ] && _hit "$dr — ChainDrop dropper artefact (see snare respond)"
     done
 
-    [ -d .husky ] && { _hit ".husky/ present (runs on git operations)"; ls -1 .husky | sed 's/^/        /'; }
+    # Husky is ordinary tooling — flagging its presence made every repository
+    # that uses it "infected", and blocked agents in them. What its hooks RUN
+    # is what matters.
+    if [ -d .husky ]; then
+      local hk bad_hook=0
+      for hk in .husky/*; do
+        [ -f "$hk" ] || continue
+        if grep -qE 'curl|wget|base64|\beval\b|child_process|node[^|;&]*[[:space:]]--?(e|p|eval|print)([[:space:]]|=|$)|\|[[:space:]]*(sh|bash)' "$hk" 2>/dev/null; then
+          _hit "$hk — this git hook downloads or evaluates code:"; grep -nE 'curl|wget|base64|eval|child_process|node' "$hk" | head -3 | sed 's/^/        /'; bad_hook=1
+        fi
+      done
+      [ "$bad_hook" = 0 ] && dim "  .husky/ hooks present — they run on commit/push; contents look ordinary"
+    fi
     for hook in .git/hooks/*; do
       [ -f "$hook" ] || continue; case "$hook" in *.sample) continue;; esac
       [ -x "$hook" ] && _hit "active local git hook: $hook"

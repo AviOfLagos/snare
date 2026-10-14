@@ -138,6 +138,28 @@ snare update && snare selftest</pre></div></div>
       </ul>
     </div>
     <div class="rel-group">
+      <h3>Changed — a block shows what is suspected and where; the person decides</h3>
+      <ul class="rel-list">
+        <li><strong>It is fine, it is mine:</strong> <code>snare gate allow [dir]</code>, in their own terminal. It walks through each finding and asks. An approval is stored in <code>~/.snare/gate-allow</code> — never in the repository, where a payload could ship its own — and is tied to the file's <strong>content</strong>: change the file and it is flagged again. <code>snare gate allowed</code> lists approvals; <code>snare gate forget</code> withdraws them.</li>
+        <li><strong>Let snare take charge:</strong> <code>snare respond</code>, the guided clean-up.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the gate's check was the full scan, and timed out</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — husky was reported as malware</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — "read-only" programs that can run a command</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
       <h3>Changed — the gate decides what is safe, not what is dangerous</h3>
       <ul class="rel-list">
       </ul>

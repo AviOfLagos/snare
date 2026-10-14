@@ -164,7 +164,17 @@ snare selftest                  prove detection still works against known sample
       <div class="scroller"><pre>snare agents install            gate every clone, pull, install and run an agent does
 snare agents status | uninstall
 snare agents install --project  also this repo's CLAUDE.md / AGENTS.md and a project hook
-snare gate -- &lt;command&gt;         scan first; exit 0 means safe to run it</pre></div></div>
+snare gate -- &lt;command&gt;         scan first; exit 0 means safe to run it
+snare gate allow [dir]          you looked and it is yours: allow what was flagged
+snare gate allowed | forget     review or withdraw what you allowed</pre></div></div>
+
+    <p class="note"><strong>A block is what snare suspects, not a verdict.</strong> It lists each
+    finding as the file, the line and what is suspected, so you can look — it can be a false
+    alarm. Then you decide: <code>snare gate allow</code> if it is yours, or
+    <code>snare respond</code> to let snare take charge. Approvals live in
+    <code>~/.snare</code>, never in the repository, and lapse if the file changes. A coding agent
+    cannot approve its own block: it is told to stop and show you, and an agent that tries is
+    refused.</p>
 
     <p class="note">The <strong>gate</strong> answers one question before a command runs: does it
     bring code in or execute it, and is that code clean? <code>git clone</code> is cloned to a
