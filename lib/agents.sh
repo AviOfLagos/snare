@@ -186,6 +186,7 @@ _agents_install(){
     esac; shift
   done
   rm -f "$AG_DECLINED" 2>/dev/null
+  mkdir -p "$SNARE_HOME" 2>/dev/null; [ -f "$SNARE_HOME/agents-migrated" ] || date +%s > "$SNARE_HOME/agents-migrated"
   [ "$quiet" = 1 ] || hdr "snare agents — gate every clone, pull, install and run"
 
   if [ -d "$HOME/.claude" ] || command -v claude >/dev/null 2>&1; then

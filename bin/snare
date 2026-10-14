@@ -225,6 +225,29 @@ main(){
     *) red "unknown command: $c"; echo; usage; exit 2 ;;
   esac
 }
+# One-time migration onto the agent gate. `snare update` cannot do this for
+# the people who need it most: the process running the update is still the
+# OLD code, which has never heard of the gate, so an upgrade from 1.4.x
+# finished cleanly and left the gate uninstalled — measured, not supposed.
+# So the first command the NEW code runs does it, once, and says so. Not in
+# the hook's hot path, not in CI, and never after `snare agents uninstall`.
+case "${1:-}" in
+  gate|agents|_update-refresh|_c2-refresh) ;;
+  *)
+    if [ -z "${SNARE_NO_AGENTS:-}" ] && [ -z "${CI:-}" ] \
+       && [ ! -f "$SNARE_HOME/agents-migrated" ] && [ ! -f "$SNARE_HOME/agents-declined" ] \
+       && { [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ] || [ -d "$HOME/.gemini" ]; }; then
+      mkdir -p "$SNARE_HOME" 2>/dev/null
+      if snare_agents_sync >/dev/null 2>&1; then
+        date +%s > "$SNARE_HOME/agents-migrated" 2>/dev/null
+        { echo
+          ylw "  snare now gates your coding agents: clones, pulls, installs and runs are"
+          ylw "  scanned first, and a dirty one is stopped. (snare agents status | uninstall)"
+          echo; } >&2
+      fi
+    fi ;;
+esac
+
 # One line, at most once a day, never blocking — see snare_update_nudge.
 # Runs after the command so it never delays output, and never changes the
 # command's own exit status.

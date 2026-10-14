@@ -136,6 +136,7 @@ LAUNCHERS = {"corepack", "volta", "nvm", "fnm", "mise", "rtx", "asdf", "proto",
              "gtimeout", "watch", "entr", "op", "doppler", "infisical", "with-env"}
 
 out, cur = [], cwd
+PRODUCED = set()   # directories an earlier clone in this command creates
 
 def handle(argv, depth=0):
     """Classify one simple command. Recurses into sh -c / eval / launchers."""
@@ -232,7 +233,18 @@ def handle(argv, depth=0):
             if pos and unresolved(pos[0]):
                 out.append("unresolved\t%s\tgit clone %s" % (gdir, pos[0]))
             elif pos:
-                out.append("clone\t%s\t%s\t%s" % (gdir, pos[0], branch))
+                src = pos[0]
+                local = "://" not in src and not re.match(r"^[^/]+@[^:]+:", src)
+                srcpath = resolve(src, gdir) if local else ""
+                # The gate checks the whole line before any of it runs, so in
+                # `git clone A x && git clone x y` the second source does not
+                # exist yet. Its content IS the first clone, already checked.
+                if not (local and any(srcpath == p or srcpath.startswith(p + os.sep)
+                                      for p in PRODUCED)):
+                    out.append("clone\t%s\t%s\t%s" % (gdir, src, branch))
+                dest = pos[1] if len(pos) > 1 else \
+                    os.path.basename(src.rstrip("/")).rsplit(".git", 1)[0]
+                PRODUCED.add(resolve(dest, gdir))
         elif sub == "pull":
             pos = [a for a in rest if not a.startswith("-")]
             if any(unresolved(a) for a in pos):
