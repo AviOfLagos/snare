@@ -13,11 +13,20 @@ SNARE_VERSION="1.5.0"
 # it over-matches (a path containing "node" is checked) and never under-matches.
 if [ "${1:-}" = gate ] && [ "${2#--hook}" != "${2:-}" ]; then
   SNARE_HOOK_INPUT="$(cat)"
-  _trig='(^|[^A-Za-z0-9_.-])(npm|pnpm|yarn|bun|npx|bunx|pnpx|node|deno|next|vite|nuxt|tsx|ts-node|turbo|nx|astro|remix|electron)([^A-Za-z0-9_-]|$)'
+  # The command arrives JSON-encoded, so a newline is the two characters \n.
+  # "cd app\nnpm install" put the letter n directly before npm, the word
+  # boundary failed, and every multi-line command skipped the gate entirely.
+  # Match against a copy with the escapes turned back into spaces.
+  _probe="$SNARE_HOOK_INPUT"
+  _probe="${_probe//\\n/ }"; _probe="${_probe//\\t/ }"; _probe="${_probe//\\r/ }"
+  _probe="${_probe//\\\"/ }"
+  _trig='(^|[^A-Za-z0-9_.-])(npm|pnpm|yarn|bun|npx|bunx|pnpx|node|deno|next|vite|nuxt|tsx|ts-node|turbo|nx|astro|remix|electron|corepack|volta)([^A-Za-z0-9_-]|$)'
   # git only matters when it brings commits in: `git status` and `git diff`
   # are most of what an agent runs, and they should not pay for a scan.
   _gtrig='(^|[^A-Za-z0-9_.-])git[^A-Za-z0-9_-].*(clone|pull|merge|rebase|checkout|switch|reset)'
-  [[ $SNARE_HOOK_INPUT =~ $_trig ]] || [[ $SNARE_HOOK_INPUT =~ $_gtrig ]] || exit 0
+  # gh repo clone / gh pr checkout bring code in too.
+  _htrig='(^|[^A-Za-z0-9_.-])gh[^A-Za-z0-9_-].*(clone|checkout)'
+  [[ $_probe =~ $_trig ]] || [[ $_probe =~ $_gtrig ]] || [[ $_probe =~ $_htrig ]] || exit 0
   export SNARE_HOOK_INPUT
 fi
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so

@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/snare\" gate --hook=plugin",
-            "timeout": 180
+            "timeout": 300
           }
         ]
       }

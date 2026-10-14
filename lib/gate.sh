@@ -89,87 +89,196 @@ def segments(line):
     if seg:
         yield seg
 
-out, cur, skip_all = [], cwd, False
-for line in cmd.splitlines() or [cmd]:
-    for argv in segments(line):
-        bypass = False
-        while argv and (ENV.match(argv[0]) or os.path.basename(argv[0]) in WRAPPERS):
-            if argv[0].startswith("SNARE_SKIP_GATE=") and argv[0] != "SNARE_SKIP_GATE=":
-                bypass = True
+# A heredoc body is DATA unless it is fed to a shell. Reading it as commands
+# meant that writing a README with `cat <<EOF` that says "run npm install", or
+# a Python script that mentions `git clone`, was blocked as if it ran them.
+# Bodies fed to sh/bash/zsh/dash/ksh are shell, and are checked line by line.
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+def shell_lines(text):
+    lines = text.splitlines() or [text]
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        yield line
+        i += 1
+        for m in HEREDOC.finditer(line):
+            word = m.group(2)
+            before = line[:m.start()].strip().split()
+            feeds_shell = bool(before) and os.path.basename(before[-1].lstrip("(")) in SHELLS \
+                or any(os.path.basename(w) in SHELLS for w in before[-3:])
+            body = []
+            while i < len(lines) and lines[i].strip() != word:
+                body.append(lines[i]); i += 1
+            i += 1   # the terminator
+            if feeds_shell:
+                for b in body:
+                    yield b
+
+# Variables the command itself assigns (S=/path; git clone "$S/x") are
+# tracked the way cd is, because shlex does not expand them and git would be
+# handed a literal "$S". The gate's own environment is the fallback.
+VARS = {}
+VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+def expand(a):
+    a = VAR.sub(lambda m: VARS.get(m.group(1) or m.group(2),
+                os.environ.get(m.group(1) or m.group(2), m.group(0))), a)
+    return os.path.expanduser(a) if a.startswith("~") else a
+def unresolved(a):
+    return "$(" in a or "`" in a or bool(VAR.search(a))
+
+# Programs that run another program: the gate looks through them to the
+# command they launch. Each was a measured bypass — `sh -c "npm install"`,
+# `corepack pnpm install`, `timeout 60 npm install` all ran unchecked.
+SHELL_C = {"sh", "bash", "zsh", "dash", "ksh"}
+LAUNCHERS = {"corepack", "volta", "nvm", "fnm", "mise", "rtx", "asdf", "proto",
+             "cross-env", "cross-env-shell", "dotenv", "dotenvx", "timeout",
+             "gtimeout", "watch", "entr", "op", "doppler", "infisical", "with-env"}
+
+out, cur = [], cwd
+
+def handle(argv, depth=0):
+    """Classify one simple command. Recurses into sh -c / eval / launchers."""
+    global cur
+    if depth > 6 or not argv:
+        return
+    # Leading VAR=value words and wrappers like sudo/env/nohup. The in-command
+    # SNARE_SKIP_GATE=1 is deliberately NOT a bypass: the agent writes the
+    # command, so honouring it let the agent — or a README that talked it into
+    # it — switch the gate off. A bypass has to come from the user.
+    while argv and (ENV.match(argv[0]) or os.path.basename(argv[0]) in WRAPPERS):
+        argv = argv[1:]
+        while argv and argv[0].startswith("-"):
             argv = argv[1:]
-            while argv and argv[0].startswith("-"):
-                argv = argv[1:]
-        if not argv:
-            continue
-        prog = os.path.basename(argv[0])
-        args = argv[1:]
-        if prog in ("cd", "pushd"):
-            if args and args[0] != "-":
-                cur = resolve(args[0], cur)
-            elif not args:
-                cur = os.path.expanduser("~")
-            continue
-        if bypass:
-            out.append("bypass\t%s\t%s" % (cur, " ".join(argv)))
-            continue
+    if not argv:
+        return
+    prog = os.path.basename(argv[0])
+    args = argv[1:]
 
-        if prog == "git":
-            gdir, i = cur, 0
-            while i < len(args) and args[i].startswith("-"):
-                if args[i] == "-C" and i + 1 < len(args):
-                    gdir = resolve(args[i + 1], gdir); i += 2; continue
-                if args[i] in ("-c", "--git-dir", "--work-tree", "--namespace") and i + 1 < len(args):
-                    i += 2; continue
-                i += 1
-            sub = args[i] if i < len(args) else ""
-            rest = args[i + 1:]
-            if sub == "clone":
-                pos, branch, j = [], "", 0
-                while j < len(rest):
-                    a = rest[j]
-                    if a in CLONE_VAL and j + 1 < len(rest):
-                        if a in ("-b", "--branch"):
-                            branch = rest[j + 1]
-                        j += 2; continue
-                    if a.startswith("--branch="):
-                        branch = a.split("=", 1)[1]
-                    if not a.startswith("-"):
-                        pos.append(a)
-                    j += 1
-                if pos:
-                    out.append("clone\t%s\t%s\t%s" % (gdir, pos[0], branch))
-            elif sub == "pull":
-                pos = [a for a in rest if not a.startswith("-")]
-                out.append("pull\t%s\t%s" % (gdir, "\t".join(pos[:2])))
-            elif sub in ("merge", "rebase", "checkout", "switch", "reset"):
-                if "--" in rest:
-                    rest = rest[:rest.index("--")]
-                # -b/-c/--orphan create a branch from what you already have.
-                if any(a in ("-b", "-B", "-c", "-C", "--orphan", "--abort",
-                             "--continue", "--skip", "--quit") for a in rest):
-                    continue
-                for a in rest:
-                    if not a.startswith("-"):
-                        out.append("ref\t%s\t%s" % (gdir, a))
-            continue
+    if prog in ("cd", "pushd"):
+        if args and args[0] != "-":
+            cur = resolve(args[0], cur)
+        elif not args:
+            cur = os.path.expanduser("~")
+        return
 
-        if prog in PM or prog in RUNNERS:
-            d, j = cur, 0
-            while j < len(args):
-                a = args[j]
-                if a in ("--prefix", "-C", "--dir", "--cwd") and j + 1 < len(args):
-                    d = resolve(args[j + 1], cur); j += 2; continue
-                for p in ("--prefix=", "--dir=", "--cwd="):
-                    if a.startswith(p):
-                        d = resolve(a[len(p):], cur)
+    # sh -c "<script>", bash -lc '<script>' — the script is shell, so check it.
+    if prog in SHELL_C:
+        for k, a in enumerate(args):
+            if a.startswith("-") and not a.startswith("--") and "c" in a[1:]:
+                if k + 1 < len(args):
+                    saved = cur
+                    for line in shell_lines(args[k + 1]):
+                        for seg in segments(line):
+                            handle([expand(t) for t in seg], depth + 1)
+                    cur = saved
+                return
+        return
+    if prog == "eval":
+        for line in shell_lines(" ".join(args)):
+            for seg in segments(line):
+                handle([expand(t) for t in seg], depth + 1)
+        return
+    # Launchers: look past their own words to the first program we gate.
+    if prog in LAUNCHERS:
+        for k, a in enumerate(args):
+            b = os.path.basename(a)
+            if b in PM or b in RUNNERS or b in ("git", "gh") or b in SHELL_C:
+                handle(args[k:], depth + 1)
+                return
+        return
+
+    if prog == "gh":
+        # gh repo clone owner/repo [dir]  ->  a clone of that repository.
+        # gh pr checkout <n>              ->  the PR's head, which may come
+        #                                     from anyone's fork, lands here.
+        if args[:2] == ["repo", "clone"] and len(args) > 2:
+            target = args[2]
+            url = target if "://" in target or target.startswith("git@") \
+                else "https://github.com/%s.git" % target
+            out.append("clone\t%s\t%s\t" % (cur, url))
+        elif args[:2] == ["pr", "checkout"] and len(args) > 2:
+            n = next((a for a in args[2:] if not a.startswith("-")), "")
+            n = n.rstrip("/").split("/")[-1]
+            if n.isdigit():
+                out.append("pull\t%s\torigin\tpull/%s/head" % (cur, n))
+            else:
+                out.append("unresolved\t%s\tgh pr checkout %s" % (cur, n))
+        return
+
+    if prog == "git":
+        gdir, i = cur, 0
+        while i < len(args) and args[i].startswith("-"):
+            if args[i] == "-C" and i + 1 < len(args):
+                gdir = resolve(args[i + 1], gdir); i += 2; continue
+            if args[i] in ("-c", "--git-dir", "--work-tree", "--namespace") and i + 1 < len(args):
+                i += 2; continue
+            i += 1
+        sub = args[i] if i < len(args) else ""
+        rest = args[i + 1:]
+        if sub == "clone":
+            pos, branch, j = [], "", 0
+            while j < len(rest):
+                a = rest[j]
+                if a in CLONE_VAL and j + 1 < len(rest):
+                    if a in ("-b", "--branch"):
+                        branch = rest[j + 1]
+                    j += 2; continue
+                if a.startswith("--branch="):
+                    branch = a.split("=", 1)[1]
+                if not a.startswith("-"):
+                    pos.append(a)
                 j += 1
-            sub = next((a for a in args if not a.startswith("-")), "")
-            flags = [a for a in args if a.startswith("-")]
-            if args and set(args) <= {"-v", "--version", "-h", "--help"}:
-                continue
-            if prog in PM and sub in SAFE:
-                continue
-            out.append("tree\t%s" % d)
+            if pos and unresolved(pos[0]):
+                out.append("unresolved\t%s\tgit clone %s" % (gdir, pos[0]))
+            elif pos:
+                out.append("clone\t%s\t%s\t%s" % (gdir, pos[0], branch))
+        elif sub == "pull":
+            pos = [a for a in rest if not a.startswith("-")]
+            if any(unresolved(a) for a in pos):
+                out.append("unresolved\t%s\tgit pull %s" % (gdir, " ".join(pos)))
+            else:
+                out.append("pull\t%s\t%s" % (gdir, "\t".join(pos[:2])))
+        elif sub in ("merge", "rebase", "checkout", "switch", "reset", "cherry-pick"):
+            if "--" in rest:
+                rest = rest[:rest.index("--")]
+            if any(a in ("-b", "-B", "-c", "-C", "--orphan", "--abort",
+                         "--continue", "--skip", "--quit") for a in rest):
+                return
+            for a in rest:
+                if a.startswith("-"):
+                    continue
+                if unresolved(a):
+                    out.append("unresolved\t%s\tgit %s %s" % (gdir, sub, a))
+                else:
+                    out.append("ref\t%s\t%s" % (gdir, a))
+        return
+
+    if prog in PM or prog in RUNNERS:
+        d, j = cur, 0
+        while j < len(args):
+            a = args[j]
+            if a in ("--prefix", "-C", "--dir", "--cwd") and j + 1 < len(args):
+                d = resolve(args[j + 1], cur); j += 2; continue
+            for p in ("--prefix=", "--dir=", "--cwd="):
+                if a.startswith(p):
+                    d = resolve(a[len(p):], cur)
+            j += 1
+        sub = next((a for a in args if not a.startswith("-")), "")
+        if args and set(args) <= {"-v", "--version", "-h", "--help"}:
+            return
+        if prog in PM and sub in SAFE:
+            return
+        out.append("tree\t%s" % d)
+
+for line in shell_lines(cmd):
+    for argv in segments(line):
+        if argv and all(ENV.match(t) for t in argv):
+            for t in argv:
+                k, v = t.split("=", 1)
+                VARS[k] = expand(v)
+            continue
+        handle([expand(t) for t in argv])
 
 seen = set()
 for o in out:
@@ -234,11 +343,11 @@ _gate_clone(){ # $1=cwd $2=url $3=branch
     /*|*://*|*@*:*) ;;
     *) [ -e "$1/$url" ] && url="$1/$url" ;;
   esac
-  q="$(mktemp -d "${TMPDIR:-/tmp}/snaregate.XXXXXX")" || return 2
+  q="$(mktemp -d "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snaregate.XXXXXX")" || return 2
   # Cloning runs nothing: hooks are never cloned, and hooksPath is pointed at
   # nothing besides. Submodules are left alone — they are their own clone.
   if ! GIT_TERMINAL_PROMPT=0 git -c core.hooksPath=/dev/null clone -q --depth 1 \
-        --no-recurse-submodules ${3:+-b "$3"} "$url" "$q/repo" >"$q/err" 2>&1; then
+        --no-recurse-submodules ${3:+-b "$3"} -- "$url" "$q/repo" >"$q/err" 2>&1; then
     echo "could not fetch $2 to check it first:"; sed 's/^/    /' "$q/err" | tail -3
     rm -rf "$q"; return 2
   fi
@@ -268,9 +377,18 @@ _gate_clone(){ # $1=cwd $2=url $3=branch
 
 _gate_ref(){ # $1=dir $2=ref — scan a commit's tree without touching the working copy
   local sha q rc
-  sha="$(git -C "$1" rev-parse --verify --quiet "$2^{commit}" 2>/dev/null)" || return 0
+  sha="$(git -C "$1" rev-parse --verify --quiet "$2^{commit}" 2>/dev/null)"
+  if [ -z "$sha" ]; then
+    # `git checkout feat` / `git switch feat` with only <remote>/feat present
+    # creates the branch from the remote copy. That is new code arriving, and
+    # "rev-parse failed" used to be read as "not a ref" and let through.
+    local dwim
+    dwim="$(git -C "$1" for-each-ref --format='%(refname)' "refs/remotes/*/$2" 2>/dev/null | head -1)"
+    [ -n "$dwim" ] || return 0
+    sha="$(git -C "$1" rev-parse --verify --quiet "$dwim^{commit}" 2>/dev/null)" || return 0
+  fi
   [ "$sha" = "$(git -C "$1" rev-parse HEAD 2>/dev/null)" ] && return 0
-  q="$(mktemp -d "${TMPDIR:-/tmp}/snaregate.XXXXXX")" || return 2
+  q="$(mktemp -d "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snaregate.XXXXXX")" || return 2
   if ! git -C "$1" -c core.hooksPath=/dev/null worktree add --quiet --detach "$q/wt" "$sha" >/dev/null 2>&1; then
     rm -rf "$q"; echo "could not check out $2 to scan it"; return 2
   fi
@@ -317,9 +435,10 @@ _gate_decide(){
       clone)  res="$(_gate_clone "$a" "$b" "$c")"; rc=$? ; what="$b" ;;
       pull)   res="$(_gate_pull "$a" ${b:+"$b"} ${c:+"$c"})"; rc=$? ; what="incoming changes for $a" ;;
       ref)    res="$(_gate_ref "$a" "$b")"; rc=$? ; what="$b in $a" ;;
-      bypass) _gate_log "BYPASS cwd=$a cmd=$b"
-              snare_desktop_notify "snare gate bypassed: $b"
-              out+=("bypassed on request (logged): $b"); continue ;;
+      unresolved) cant=1
+              out+=("could not resolve a value in: $b"
+                    "    (built at run time — \$(…), a backtick, or a variable set elsewhere)"
+                    "    write the value out literally and the gate can check it"); continue ;;
       *) continue ;;
     esac
     case "$rc" in
@@ -353,9 +472,18 @@ _gate_banner(){ # $1=command $2=details $3=payload|unverified
     echo "findings above. Do not retry it a different way and do not bypass it."
     echo "Next step for the user: snare respond"
   else
-    echo "Nothing was run. Retry once the network or credentials are back. Only"
-    echo "the user can approve running it unchecked: SNARE_SKIP_GATE=1 <command>"
+    echo "Nothing was run. If the reason above is a network or credentials"
+    echo "problem, retry when it is back. If it is a value the gate could not"
+    echo "resolve, write it out literally. Only the user can run it unchecked,"
+    echo "from their own terminal — an agent cannot switch the gate off."
   fi
+}
+
+_gate_killtree(){ # $1 = pid; children first, so none are reparented and missed
+  local c
+  for c in $(pgrep -P "$1" 2>/dev/null); do _gate_killtree "$c"; done
+  kill -TERM "$1" 2>/dev/null
+  return 0
 }
 
 # Claude Code PreToolUse: JSON on stdin, exit 2 blocks and hands stderr to
@@ -381,10 +509,40 @@ sys.stdout.write(c + "\0" + (d.get("cwd") or "") + "\0")
 ' 2>/dev/null <<< "${SNARE_HOOK_INPUT:-$(cat)}")
   [ -n "${cmd:-}" ] || return 0
   [ -n "${cwd:-}" ] && [ -d "$cwd" ] || cwd="$PWD"
+  # Set in the environment Claude Code was started from — the user's choice,
+  # not something the agent can write into a command. Logged and announced.
   if [ -n "${SNARE_SKIP_GATE:-}" ]; then
-    _gate_log "BYPASS env cwd=$cwd cmd=$cmd"; return 0
+    _gate_log "BYPASS env cwd=$cwd cmd=$cmd"
+    snare_desktop_notify "snare gate is OFF (SNARE_SKIP_GATE): $cmd"
+    return 0
   fi
-  verdict="$(_gate_decide "$cmd" "$cwd")" && return 0
+  # Its own deadline, shorter than the hook's timeout. When Claude Code's
+  # timeout kills a hook it treats that as a non-blocking error and RUNS the
+  # command — so a scan slow enough to time out (a huge clone) would let the
+  # command through unchecked. Stopping first, and blocking, keeps it closed.
+  local tmp pid n=0 rc budget="${SNARE_GATE_BUDGET:-150}"
+  # Everything this run creates — quarantine clones, worktrees — goes under
+  # one directory, so a run that is stopped can be cleaned up completely.
+  SNARE_GATE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/snaregate-run.XXXXXX")" || return 2
+  export SNARE_GATE_TMP
+  tmp="$SNARE_GATE_TMP/verdict"
+  ( _gate_decide "$cmd" "$cwd" > "$tmp" 2>&1; echo "$?" > "$tmp.rc" ) &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null && [ "$n" -lt $(( budget * 5 )) ]; do
+    sleep 0.2; n=$((n + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    # The whole tree: the clone is a grandchild, and killing only the direct
+    # child left a timed-out `git clone` downloading in the background.
+    _gate_killtree "$pid"
+    verdict="the scan did not finish within ${budget}s, so nothing was verified"
+    rc=1
+  else
+    wait "$pid" 2>/dev/null
+    verdict="$(cat "$tmp" 2>/dev/null)"; rc="$(cat "$tmp.rc" 2>/dev/null || echo 1)"
+  fi
+  rm -rf "$SNARE_GATE_TMP"
+  [ "$rc" = 0 ] && return 0
   printf '%s\n' "$verdict" | grep -q 'supply-chain payload' && kind=payload || kind=unverified
   [ "$kind" = payload ] && snare_desktop_notify "FIRE ON THE MOUNTAIN: an agent tried to run code carrying a payload. Command blocked."
   _gate_banner "$cmd" "$verdict" "$kind" >&2

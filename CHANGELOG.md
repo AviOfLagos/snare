@@ -36,10 +36,12 @@ It reads the command the way the shell does: `cd app && npm --prefix web ci`
 is checked in `app/web`, `git -C repo pull` in `repo`, and `echo 'npm install'`
 or `git commit -m "git pull"` is not a command at all.
 
-It fails **closed**. A scan that cannot finish — no network, no credentials —
-blocks the command and says so. A bypass (`SNARE_SKIP_GATE=1 <command>`) is
-honoured, logged to `~/.snare/logs/gate.log` and announced on the desktop,
-because a silent bypass is how the original went unnoticed.
+It fails **closed**. A scan that cannot finish — no network, no credentials,
+out of time — blocks the command and says so. There is no switch an agent can
+use to turn it off; the only bypass is `SNARE_SKIP_GATE` in the environment you
+launch your agent from, and it is logged to `~/.snare/logs/gate.log` and
+announced on the desktop every time, because a silent bypass is how the
+original went unnoticed.
 
 ### Added — `snare agents`: the gate in front of every coding agent
 
@@ -83,6 +85,52 @@ and hooks are kept, and running install twice changes nothing.
   history walk. `snare scan repo` itself is unchanged and remains the full
   check.
 
+### Fixed — the gate's own bypasses, before it shipped
+
+A security review of the first version found it could be walked past, and
+every finding was reproduced before it was fixed: `npm install` ran in an
+infected repository and the gate allowed it. Twelve shapes, all now blocked
+and all in the selftest:
+
+- **A newline before the command.** The hook receives the command
+  JSON-encoded, so a newline is the two characters `\n`; `cd app\nnpm
+  install` put the letter `n` directly before `npm`, the word boundary
+  failed, and **every multi-line agent command skipped the gate entirely**.
+  The same for a tab.
+- **The agent could switch it off.** `SNARE_SKIP_GATE=1 npm install` was
+  honoured when it appeared in the command — and the agent writes the command,
+  so a README or issue that talked it into that prefix turned the gate off.
+  An in-command bypass no longer exists. The environment variable still works,
+  because it is set where Claude Code was launched, which the agent cannot
+  change, and it is logged and announced every time.
+- **Wrapping it.** `sh -c "npm install"`, `bash -lc '…'`, `eval "…"`, and a
+  heredoc fed to `bash`. The gate now reads inside them.
+- **Launchers.** `corepack pnpm install`, `volta run npm install`,
+  `cross-env … npm run dev`, `timeout 60 npm install`, and similar. The gate
+  looks through them to the program they start.
+- **Checking out a branch that exists only on the remote.** `git checkout
+  feat` creates `feat` from `origin/feat`; the gate read "no such local ref" as
+  "nothing to check". It now resolves the remote copy and scans it.
+- **`gh pr checkout` and `gh repo clone`**, which bring code in — a pull
+  request's head can come from anyone's fork — and were not seen at all.
+- **A slow scan let the command through.** When Claude Code's hook timeout
+  fires it treats the hook as failed and runs the command anyway. The gate now
+  keeps its own shorter deadline and blocks when it is hit, and kills the whole
+  scan tree — the first attempt killed only the direct child and left a
+  timed-out `git clone` of the Linux kernel downloading in the background.
+- **The installed hook command** embedded snare's path in hand-written quotes;
+  a path containing a quote would have become code that runs before every
+  agent command. It is `%q`-quoted now, and tested with a hostile path.
+- **A clone URL could be read as an option.** `--` now separates them.
+
+Found the other way round, by the gate blocking its own author: **text written
+through a heredoc was read as commands**, so writing a README that says "run
+`npm install`" was blocked. A heredoc body is data unless it is fed to a
+shell. And a variable the command sets itself (`S=/x; git clone "$S/y"`) or a
+`~` path is now resolved; a value built at run time is reported as one the
+gate cannot check, with the advice to write it out, rather than blamed on the
+network.
+
 ### Fixed — the shell shield broke npm for every coding agent
 
 Found because the gate's own live test printed `command not found:
@@ -111,8 +159,12 @@ installed shield block from the new code, so this reaches everyone who has it.
 - The hook covers Claude Code. Codex, Cursor and Gemini get the instruction
   block, which they can ignore; Cursor's own shell hooks are a natural next
   step.
-- It reads commands, not intent: a script that runs `npm install` inside it,
-  or a command assembled at runtime, is checked only as far as it is visible.
+- It reads commands, not intent: a script file that runs `npm install` inside
+  it is checked only as far as the command that launches it shows. A value
+  assembled at run time is reported as unverifiable rather than guessed.
+- `npm install <package>` from a registry or a git URL runs that package's own
+  lifecycle scripts; the gate checks the repository you are in, not the
+  package you are adding.
 - The gate checks the repository's own files. `node_modules` is left to
   `snare scan repo`, and npm itself to `snare doctor`.
 

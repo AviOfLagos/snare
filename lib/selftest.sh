@@ -225,6 +225,7 @@ JSON
   _st_campaign
   _st_relink
   _st_gate
+  _st_gate_bypasses
   _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
@@ -782,6 +783,15 @@ _st_gate(){
     _st_ok "and the working copy is untouched, with no worktree left behind"
   else _st_bad "and the working copy is untouched, with no worktree left behind"; fi
 
+  # ---- checkout of a branch that exists only on the remote. git creates it
+  #      FROM the remote copy; the first version read "no such local ref" as
+  #      "nothing to check" and let it through.
+  git --git-dir="$D/remote.git" update-ref refs/heads/feat "$(git --git-dir="$D/remote.git" rev-parse main)"
+  git -C "$D/work" fetch -q origin 2>/dev/null
+  out="$(_gate_decide "git checkout feat" "$D/work")"; rc=$?
+  if [ "$rc" = 1 ]; then _st_ok "git checkout of a remote-only branch is scanned before git creates it"
+  else _st_bad "git checkout of a remote-only branch is scanned before git creates it (rc=$rc)"; fi
+
   # ---- clone: quarantined first, so the real destination never appears
   out="$(cd "$D" && _gate_decide "git clone $D/remote.git dest" "$D")"; rc=$?
   if [ "$rc" = 1 ] && [ ! -d "$D/dest" ]; then
@@ -853,4 +863,72 @@ _st_shield_fallback(){
     _st_bad "the shell shield still runs npm when its helper is dropped (got: $out)"
   fi
   rm -rf "$d"
+}
+
+# ---------------------------------------------- the gate's own bypasses
+# A security review of the first version found these, and each was then
+# reproduced: npm ran in an infected repo and the gate allowed it. They are
+# the shapes an agent actually writes, plus the ones an attacker would ask it
+# to write.
+_st_gate_bypasses(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snaregb.XXXXXX")" || return 0
+  D="$(cd "$D" && pwd)"
+  mkdir -p "$D/bad"
+  printf '{"name":"v","scripts":{"dev":"node api.js && next dev"}}\n' > "$D/bad/package.json"
+  python3 -c "open('$D/bad/api.js','w').write('var _0xaf=[];'+'x'*29000)"
+  local c rc missed=""
+  _stj(){ python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"; }
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    c="$(printf '%b' "$c")"
+    _stj "$D/bad" "$c" | SNARE_NO_NOTIFY=1 SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; rc=$?
+    [ "$rc" = 2 ] || missed="$missed [$(printf '%s' "$c" | tr '\n\t' '  ')]"
+  done <<'CMDS'
+echo hi\nnpm install
+cd .\n\tnpm install
+SNARE_SKIP_GATE=1 npm install
+sh -c "npm install"
+bash -lc 'npm run dev'
+eval "npm install"
+corepack pnpm install
+volta run npm install
+cross-env NODE_ENV=x npm run dev
+timeout 60 npm install
+bash <<'EOF'\nnpm install\nEOF
+CMDS
+  if [ -z "$missed" ]; then
+    _st_ok  "newlines, sh -c, eval, launchers and an in-command bypass are all gated"
+  else
+    _st_bad "newlines, sh -c, eval, launchers and an in-command bypass are all gated — missed:$missed"
+  fi
+
+  # A heredoc that only WRITES text is data. Blocking it stopped an agent
+  # writing a README that says "npm install".
+  _stj "$D/bad" "$(printf 'cat > NOTES.md <<EOF\nrun npm install, then git clone x\nEOF')" \
+    | SNARE_NO_NOTIFY=1 SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; rc=$?
+  if [ "$rc" = 0 ]; then _st_ok "text written through a heredoc is not mistaken for a command"
+  else _st_bad "text written through a heredoc is not mistaken for a command (rc=$rc)"; fi
+
+  # gh brings code in too, and the gate has to see it.
+  local acts
+  acts="$(python3 -c "$(_gate_py)" "gh pr checkout 45 && gh repo clone a/b" "$D" 2>/dev/null)"
+  if printf '%s' "$acts" | grep -q "pull	$D	origin	pull/45/head" \
+     && printf '%s' "$acts" | grep -q "clone	$D	https://github.com/a/b.git"; then
+    _st_ok "gh pr checkout and gh repo clone are gated like git"
+  else _st_bad "gh pr checkout and gh repo clone are gated like git (got: $acts)"; fi
+
+  # A scan that outruns its deadline blocks rather than letting the command
+  # through when the hook is killed.
+  _stj "$D/bad" "npm install" \
+    | SNARE_NO_NOTIFY=1 SNARE_GATE_BUDGET=0 SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; rc=$?
+  if [ "$rc" = 2 ]; then _st_ok "a scan that runs out of time blocks, it does not allow"
+  else _st_bad "a scan that runs out of time blocks, it does not allow (rc=$rc)"; fi
+
+  # The hook command runs before every agent command; a path with a quote in
+  # it must stay a path.
+  local hc; hc="$( SNARE_ROOT="/tmp/it's \$(touch $D/PWNED)"; _agents_hook_cmd )"
+  sh -c "$hc" </dev/null >/dev/null 2>&1
+  if [ ! -e "$D/PWNED" ]; then _st_ok "the installed hook command cannot be turned into code by its path"
+  else _st_bad "the installed hook command cannot be turned into code by its path"; fi
+  rm -rf "$D"
 }
