@@ -147,25 +147,27 @@ _respond_gate(){
   _step "What snare stopped"
   dim "  Re-checked now. These are SUSPICIONS with where to look — some turn out to"
   dim "  be a minified file or an unusual config. Look before you choose."
-  local kind where cmd res rc ans n=0 cleaned=0 allowed=0 left=0 keep
+  local kind where cmd pdir pref res rc ans n=0 cleaned=0 allowed=0 left=0 keep
   keep="$(mktemp "${TMPDIR:-/tmp}/snarepend.XXXXXX")" || return 0
-  while IFS="$(printf '\t')" read -r kind where cmd <&4; do
+  while IFS="$(printf '\t')" read -r kind where cmd pdir pref <&4; do
     [ -z "$kind" ] && continue
     n=$((n + 1)); echo
     if [ "$kind" = incoming ]; then
-      echo "  $n. $where"
-      dim  "     stopped before it reached this machine:  $cmd"
-      dim  "     nothing of it was written here; do not pull/clone it until its owner cleans it."
+      _respond_gate_incoming "$n" "$where" "$pdir" "$pref"; rc=$?
+      case "$rc" in
+        0) ;;                                   # clean now, or allowed
+        3) allowed=$((allowed + 1)) ;;
+        *) printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$where" "$cmd" "$pdir" "$pref" >> "$keep"; left=$((left + 1)) ;;
+      esac
       continue
     fi
     if [ ! -d "$where" ]; then dim "  $n. $where — no longer exists"; continue; fi
     res="$(SNARE_GATE_TMP="${TMPDIR:-/tmp}" _gate_tree "$where" fresh)"; rc=$?
     if [ "$rc" = 0 ]; then grn "  $n. $where — clean now (cleaned or allowed since)"; continue; fi
     echo "  $n. $where"
-    dim  "     stopped:  $cmd"
     if [ "$rc" != 1 ]; then
       ylw "     could not finish re-checking it:"; printf '%s\n' "$res" | sed 's/^/   /'
-      printf '%s\t%s\t%s\n' "$kind" "$where" "$cmd" >> "$keep"; left=$((left + 1)); continue
+      printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$where" "$cmd" "$pdir" "$pref" >> "$keep"; left=$((left + 1)); continue
     fi
     printf '%s\n' "$res" | sed 's/^/   /'
     echo
@@ -176,11 +178,11 @@ _respond_gate(){
     printf '     Choose [c/a/L] '; IFS= read -r ans
     case "$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')" in
       c|clean) if _respond_clean_local "$where"; then cleaned=$((cleaned + 1))
-               else printf '%s\t%s\t%s\n' "$kind" "$where" "$cmd" >> "$keep"; left=$((left + 1)); fi ;;
+               else printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$where" "$cmd" "$pdir" "$pref" >> "$keep"; left=$((left + 1)); fi ;;
       a|allow) _gate_allow "$where"
                if SNARE_GATE_TMP="${TMPDIR:-/tmp}" _gate_tree "$where" fresh >/dev/null; then allowed=$((allowed + 1))
-               else printf '%s\t%s\t%s\n' "$kind" "$where" "$cmd" >> "$keep"; left=$((left + 1)); fi ;;
-      *)       printf '%s\t%s\t%s\n' "$kind" "$where" "$cmd" >> "$keep"; left=$((left + 1))
+               else printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$where" "$cmd" "$pdir" "$pref" >> "$keep"; left=$((left + 1)); fi ;;
+      *)       printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$where" "$cmd" "$pdir" "$pref" >> "$keep"; left=$((left + 1))
                dim "     left — still blocked" ;;
     esac
   done 4< "$GATE_PENDING"
@@ -198,6 +200,53 @@ _respond_gate(){
     red "  here, so the full clean-up follows — credentials first."
   fi
   return 0
+}
+
+# Something the gate stopped before it arrived: a branch, a pull, a clone.
+# Re-check it now and let the person allow it — this is the person's own
+# repository far more often than not, so "wait for its owner" was no answer.
+# Returns 0 clean now, 3 allowed, 1 still blocked.
+_respond_gate_incoming(){ # $1=n $2=label $3=dir $4=ref|url
+  local n="$1" label="$2" dir="$3" ref="$4" out rc ans target
+  if [ -n "$dir" ]; then target="$dir"
+    [ -d "$dir" ] || { dim "  $n. $label — that repository is gone"; return 0; }
+  else target="$ref"; ref=""; fi
+  [ -n "$target" ] || { echo "  $n. $label"; dim "     (recorded by an older snare — re-run the command to check it again)"; return 0; }
+  out="$(_gate_allow_scan "$target" "$ref" 2>/dev/null)"; rc=$?
+  # Only what is still flagged once the person's earlier approvals count.
+  if [ "$rc" = 1 ]; then
+    local fp keepo="" l
+    while IFS= read -r l; do
+      fp="${l##*$'\t'}"
+      grep -q "^$fp " "$GATE_ALLOW" 2>/dev/null || keepo="$keepo$l"$'\n'
+    done <<< "$out"
+    out="$keepo"; [ -n "$out" ] || rc=0
+  fi
+  if [ "$rc" = 0 ]; then grn "  $n. $label — clean now (changed or allowed since)"; return 0; fi
+  echo "  $n. $label"
+  dim  "     not on this machine yet — this is what would arrive:"
+  if [ "$rc" = 2 ]; then ylw "     could not fetch it to look again: $out"; return 1; fi
+  local path line what ex
+  while IFS="$(printf '\t')" read -r _ path line what ex _; do
+    [ -z "$path" ] && continue
+    if [ "${line:-0}" -gt 0 ] 2>/dev/null; then echo "     $path:$line — $what"; else echo "     $path — $what"; fi
+    [ -n "$ex" ] && echo "         ↳ $ex"
+  done <<< "$out"
+  echo
+  echo "     a  it is mine and harmless — allow it (asks about each finding)"
+  echo "     l  leave it — the gate keeps stopping it"
+  [ -n "$dir" ] && dim "     (if this is your repository and it IS infected: fix it at the source"
+  [ -n "$dir" ] && dim "      with 'snare fix <owner/repo>', then pull again)"
+  printf '     Choose [a/L] '; IFS= read -r ans
+  case "$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')" in
+    a|allow) _gate_allow "$target" ${ref:+"$ref"}
+             out="$(_gate_allow_scan "$target" "$ref" 2>/dev/null)"
+             local left_=0 l2
+             while IFS= read -r l2; do [ -z "$l2" ] && continue
+               grep -q "^${l2##*$'\t'} " "$GATE_ALLOW" 2>/dev/null || left_=1; done <<< "$out"
+             [ "$left_" = 0 ] && return 3; return 1 ;;
+    *) dim "     left — still stopped"; return 1 ;;
+  esac
 }
 
 # Clean one local checkout in place with the same cleaner `snare fix` uses.

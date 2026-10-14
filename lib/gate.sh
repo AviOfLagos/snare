@@ -1135,13 +1135,16 @@ _gate_log(){ mkdir -p "$SNARE_LOGS" 2>/dev/null; echo "$(date '+%Y-%m-%dT%H:%M:%
 # person there ("let snare take charge"), so respond has to know WHAT was
 # stopped — without this it ran a generic account sweep and never mentioned
 # the repository that had just been blocked. One line per place:
-#   local<TAB>/path/to/repo<TAB>command      payload committed in a checkout
-#   incoming<TAB>what<TAB>command            stopped before it reached disk
+#   local<TAB>/path/to/repo<TAB>command<TAB>/path/to/repo<TAB>
+#   incoming<TAB>what<TAB>command<TAB>/path/to/repo<TAB>ref    a branch or pull
+#   incoming<TAB>what<TAB>command<TAB><TAB>url                 a clone
+# The last two fields are what `snare gate allow` needs to look again.
 GATE_PENDING="$SNARE_LOGS/gate-pending"
-_gate_pending_add(){ # $1=kind $2=where $3=command
+_gate_pending_add(){ # $1=kind $2=where $3=command $4=dir $5=ref|url
   mkdir -p "$SNARE_LOGS" 2>/dev/null
   [ -f "$GATE_PENDING" ] && grep -qF "$(printf '%s\t%s\t' "$1" "$2")" "$GATE_PENDING" 2>/dev/null && return 0
-  printf '%s\t%s\t%s\n' "$1" "$2" "$(printf '%s' "$3" | tr '\n\t' '  ' | cut -c1-200)" >> "$GATE_PENDING" 2>/dev/null
+  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$(printf '%s' "$3" | tr '\n\t' '  ' | cut -c1-200)" \
+    "${4:-}" "${5:-}" >> "$GATE_PENDING" 2>/dev/null
 }
 
 # $1 = command, $2 = cwd. Prints the verdict on stdout. 0 allow, 1 block.
@@ -1190,9 +1193,18 @@ _gate_decide(){
       0) ;;
       1) blocked=1; out+=("$what carries a supply-chain payload:" "$res")
          case "$kind" in
+           ref)   out+=("@allow snare gate allow $(printf '%q %q' "$a" "$b")") ;;
+           clone) out+=("@allow snare gate allow $(printf '%q' "$b")") ;;
+           pull)  out+=("@allow snare gate allow $(printf '%q' "$a")${c:+ $(printf '%q' "$b/$c")}") ;;
+           *)     out+=("@allow snare gate allow $(printf '%q' "$what")") ;;
+         esac
+         case "$kind" in
            tree|unknown) local ptop; ptop="$("${GATE_GIT[@]}" -C "$what" rev-parse --show-toplevel 2>/dev/null)"
-                         _gate_pending_add local "${ptop:-$what}" "$cmd" ;;
-           *)            _gate_pending_add incoming "$what" "$cmd" ;;
+                         _gate_pending_add local "${ptop:-$what}" "$cmd" "${ptop:-$what}" ;;
+           ref)          _gate_pending_add incoming "$what" "$cmd" "$a" "$b" ;;
+           pull)         _gate_pending_add incoming "$what" "$cmd" "$a" "${c:+$b/$c}" ;;
+           clone)        _gate_pending_add incoming "$what" "$cmd" "" "$b" ;;
+           *)            _gate_pending_add incoming "$what" "$cmd" "$a" ;;
          esac ;;
       *) cant=1;    out+=("could not finish checking $what:" "$res") ;;
     esac
@@ -1214,15 +1226,24 @@ _gate_banner(){ # $1=command $2=details $3=payload|unverified
   fi
   echo "    $1"
   echo
-  printf '%s\n' "$2" | sed 's/^/  /'
+  printf '%s\n' "$2" | grep -v '^@allow ' | sed 's/^/  /'
   echo
   if [ "$3" = payload ]; then
-    local where; where="$(printf '%s\n' "$2" | sed -n 's/ carries a supply-chain payload:$//p' | head -1)"
+    # The exact allow command for each block. Deriving it from the heading
+    # gave `snare gate allow 'main in /repo'` — not a path, and for code that
+    # had not arrived yet allow had nothing to look at: a block nobody could
+    # approve.
+    local allows; allows="$(printf '%s\n' "$2" | sed -n 's/^@allow //p' | awk '!s[$0]++' | head -3)"
     echo "What is listed above is what snare SUSPECTS, with where to look. It can"
     echo "be a false alarm — a minified file, an unusual config. Look first; then"
     echo "the person at the keyboard decides:"
     echo
-    echo "  It is fine, it is mine:  snare gate allow ${where:+'$where'}"
+    local first=1 l
+    while IFS= read -r l; do
+      [ -z "$l" ] && continue
+      if [ "$first" = 1 ]; then echo "  It is fine, it is mine:  $l"; first=0
+      else echo "                           $l"; fi
+    done <<< "${allows:-snare gate allow}"
     echo "                           (in your own terminal — it asks about each one)"
     echo "  Let snare take charge:   snare respond"
     echo
@@ -1286,34 +1307,102 @@ _gate_allow_record(){ # $1=fingerprint $2=repo $3=path $4=what
   _gate_log "ALLOW $2 $3 $4"
 }
 
-_gate_allow(){
-  local dir="${1:-$PWD}" lit out rc path line what ex fp ans n=0 added=0
-  dir="$(cd "$dir" 2>/dev/null && pwd -P)" || die "no such directory: ${1:-}"
-  local top; top="$("${GATE_GIT[@]}" -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && dir="$top"
+# What `snare gate allow` can approve for a target: the working copy, and the
+# code a block stopped before it arrived — a branch, the upstream a pull would
+# merge, or a repository a clone would fetch. Without the incoming half, a
+# false alarm on a pull or a checkout could not be approved anywhere: allow
+# looked only at the files on disk, found them clean, and the gate kept
+# blocking. Prints TSV (label path line what excerpt fingerprint), first
+# finding per fingerprint only. Needs no person, so it is testable; the
+# approving is _gate_allow's.
+#   $1 = a directory (default .) or a clone URL   $2 = a ref (optional)
+_gate_allow_scan(){
+  local target="${1:-$PWD}" ref="${2:-}" q lit dir="" top head r sha n=0
+  q="$(mktemp -d "${TMPDIR:-/tmp}/snareallow.XXXXXX")" || return 2
+  lit="$q/lit"; ioc_literals > "$lit"
+  local trees=() labels=() refs=()
+  if [ -d "$target" ]; then
+    dir="$(cd "$target" && pwd -P)"
+    top="$("${GATE_GIT[@]}" -C "$dir" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && dir="$top"
+    trees+=("$dir"); labels+=("working copy")
+    if [ -n "$ref" ]; then refs+=("$ref")
+    else
+      r="$("${GATE_GIT[@]}" -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"
+      [ -n "$r" ] && refs+=("$r")
+      if [ -s "$GATE_PENDING" ]; then
+        local k pd pr
+        while IFS="$(printf '\t')" read -r k _ _ pd pr; do
+          [ "$k" = incoming ] && [ "$pd" = "$dir" ] && [ -n "$pr" ] && refs+=("$pr")
+        done < "$GATE_PENDING"
+      fi
+    fi
+    head="$("${GATE_GIT[@]}" -C "$dir" rev-parse HEAD 2>/dev/null)"
+    local seen=" "
+    for r in ${refs[@]+"${refs[@]}"}; do
+      sha="$("${GATE_GIT[@]}" -C "$dir" rev-parse --verify --quiet "$r^{commit}" 2>/dev/null)"
+      if [ -z "$sha" ]; then   # `main` with only origin/main present, as checkout would DWIM
+        local dw; dw="$("${GATE_GIT[@]}" -C "$dir" for-each-ref --format='%(refname)' "refs/remotes/*/$r" 2>/dev/null | head -1)"
+        [ -n "$dw" ] && sha="$("${GATE_GIT[@]}" -C "$dir" rev-parse --verify --quiet "$dw^{commit}" 2>/dev/null)"
+      fi
+      [ -n "$sha" ] && [ "$sha" != "$head" ] || continue
+      case "$seen" in *" $sha "*) continue ;; esac; seen="$seen$sha "
+      n=$((n + 1))
+      "${GATE_GIT[@]}" -C "$dir" worktree add --quiet --detach "$q/wt$n" "$sha" >/dev/null 2>&1 || continue
+      trees+=("$q/wt$n"); labels+=("$r")
+    done
+  else
+    case "$target" in
+      *://*|*@*:*) GIT_TERMINAL_PROMPT=0 "${GATE_GIT[@]}" clone -q --depth 1 ${ref:+-b "$ref"} -- "$target" "$q/clone" >/dev/null 2>&1 \
+                     || { echo "could not fetch $target"; rm -rf "$q"; return 2; }
+                   trees+=("$q/clone"); labels+=("$target") ;;
+      *) echo "no such directory: $target"; rm -rf "$q"; return 2 ;;
+    esac
+  fi
+  local i out fps=" " any=0 path line what ex fp
+  for i in "${!trees[@]}"; do
+    out="$(python3 -c "$(_gate_routes_py)" "${trees[$i]}" "$lit" "$(ioc_regexes)" /dev/null /dev/null "$SNARE_VERSION" 1 "$SNARE_ROOT" 2>/dev/null)"
+    while IFS="$(printf '\t')" read -r path line what ex fp; do
+      [ -z "$path" ] || [ -z "$fp" ] || [ "$fp" = "-" ] && continue
+      case "$fps" in *" $fp "*) continue ;; esac; fps="$fps$fp "
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${labels[$i]}" "$path" "$line" "$what" "$ex" "$fp"; any=1
+    done <<< "$out"
+  done
+  [ -n "$dir" ] && for i in $(seq 1 "$n"); do "${GATE_GIT[@]}" -C "$dir" worktree remove --force "$q/wt$i" >/dev/null 2>&1; done
+  [ -n "$dir" ] && "${GATE_GIT[@]}" -C "$dir" worktree prune >/dev/null 2>&1
+  rm -rf "$q"
+  [ "$any" = 1 ] && return 1
+  return 0
+}
+
+_gate_allow(){ # $1 = dir or clone URL, $2 = ref (optional)
+  local target="${1:-$PWD}" ref="${2:-}" out rc label path line what ex fp ans n=0 added=0 where
   _gate_person_only "snare gate allow" || return 1
-  lit="$(mktemp "${TMPDIR:-/tmp}/snareioc.XXXXXX")" || return 1
-  ioc_literals > "$lit"
-  out="$(python3 -c "$(_gate_routes_py)" "$dir" "$lit" "$(ioc_regexes)" /dev/null /dev/null "$SNARE_VERSION" 1 "$SNARE_ROOT" 2>&1)"; rc=$?
-  rm -f "$lit"
-  if [ "$rc" = 0 ]; then grn "  nothing to allow — $dir is clean"; return 0; fi
-  hdr "snare gate allow — $dir"
+  if [ -d "$target" ]; then
+    where="$(cd "$target" && pwd -P)"
+    local top; top="$("${GATE_GIT[@]}" -C "$where" rev-parse --show-toplevel 2>/dev/null)"; [ -n "$top" ] && where="$top"
+  else where="$target"; fi
+  out="$(_gate_allow_scan "$target" "$ref")"; rc=$?
+  if [ "$rc" = 0 ]; then grn "  nothing to allow — $where is clean, and so is what it would bring in"; return 0; fi
+  if [ "$rc" = 2 ]; then red "  $out"; return 1; fi
+  hdr "snare gate allow — $where"
   dim "  Each is something snare suspects. Allow only what you have looked at and"
   dim "  recognise as your own. The approval is tied to the file's current content."
   mkdir -p "$SNARE_HOME" 2>/dev/null
-  while IFS="$(printf '\t')" read -r path line what ex fp <&3; do
-    [ -z "$path" ] || [ "$fp" = "-" ] && continue
+  while IFS="$(printf '\t')" read -r label path line what ex fp <&3; do
+    [ -z "$fp" ] && continue
     n=$((n + 1)); echo
     if [ "${line:-0}" -gt 0 ] 2>/dev/null; then echo "  $n. $path:$line — $what"; else echo "  $n. $path — $what"; fi
+    [ "$label" = "working copy" ] || dim "       (in $label — not on disk yet; this is what would arrive)"
     [ -n "$ex" ] && echo "       ↳ $ex"
     printf '     Allow this one? [y/N] '; IFS= read -r ans
     case "$ans" in
-      y|Y|yes) _gate_allow_record "$fp" "$dir" "$path" "$what"; added=$((added + 1)) ;;
+      y|Y|yes) _gate_allow_record "$fp" "$where" "$path" "$what"; added=$((added + 1)) ;;
       *) echo "     left blocked" ;;
     esac
   done 3<<< "$out"
   echo
-  [ "$added" -gt 0 ] && grn "  allowed $added — the gate lets commands run here again unless something new appears"
-  dim "  Review or undo:  snare gate allowed  |  snare gate forget '$dir'"
+  [ "$added" -gt 0 ] && grn "  allowed $added — the gate lets it through unless something new appears"
+  dim "  Review or undo:  snare gate allowed  |  snare gate forget '$where'"
 }
 
 _gate_allowed(){
@@ -1414,7 +1503,7 @@ cmd_gate(){
       [ $# -gt 0 ] || die "usage: snare gate -- <command>"
       local cmd="$*" verdict kind
       if verdict="$(_gate_decide "$cmd" "$PWD")"; then
-        [ -n "$verdict" ] && printf '%s\n' "$verdict"
+        [ -n "$verdict" ] && printf '%s\n' "$verdict" | grep -v '^@allow '
         grn "  clean — safe to run: $cmd"; return 0
       fi
       printf '%s\n' "$verdict" | grep -q 'supply-chain payload' && kind=payload || kind=unverified
@@ -1426,7 +1515,7 @@ cmd_gate(){
     forget)  shift; _gate_forget "$@" ;;
     ""|-h|--help)
       echo "usage: snare gate -- <command>    check before running it (0 = clean)"
-      echo "       snare gate allow [dir]     you looked, it is fine: allow what is flagged"
+      echo "       snare gate allow [dir [branch]|url]  you looked, it is fine: allow what is flagged, on disk or incoming"
       echo "       snare gate allowed         what you have allowed"
       echo "       snare gate forget [dir|all] withdraw approvals"
       echo "       snare gate --hook          Claude Code PreToolUse hook (stdin JSON)" ;;

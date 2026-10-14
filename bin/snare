@@ -3,7 +3,7 @@
 # https://github.com/  •  MIT
 set -uo pipefail
 
-SNARE_VERSION="1.5.0"
+SNARE_VERSION="1.5.1"
 
 # Fast path for the agent hook. It runs before EVERY shell command an agent
 # issues, so the commonest read-only ones must cost almost nothing. It may only
@@ -128,7 +128,8 @@ ${C_BLD}PREVENT${C_OFF}
   snare agents status | uninstall
   snare agents install --project [dir]   also this repo's CLAUDE.md, AGENTS.md and hook
   snare gate -- <command>       scan first; exit 0 means safe to run it
-  snare gate allow [dir]        you looked and it is yours: allow what was flagged (asks per item)
+  snare gate allow [dir [branch]|url]  you looked and it is yours: allow what was flagged,
+                                on disk or still incoming (asks per item)
   snare gate allowed | forget [dir|all]
   snare shield install          scan before npm/pnpm/yarn/bun/git clone runs anything
   snare shield status | uninstall

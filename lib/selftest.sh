@@ -232,6 +232,7 @@ JSON
   _st_respond
   _st_never_delete
   _st_agents_consent
+  _st_allow_incoming
   _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
@@ -1302,5 +1303,61 @@ _st_agents_consent(){
   HOME="$H" SNARE_HOME="$S" "$SNARE_ROOT/bin/snare" agents sync </dev/null >/dev/null 2>&1
   if [ "$ok1" = 1 ]; then _st_ok "'snare agents install' is the person's yes, and installs"
   else _st_bad "'snare agents install' is the person's yes, and installs"; fi
+  rm -rf "$D"
+}
+
+# A block on code that has not arrived yet — a checkout of an upstream branch,
+# a pull, a clone — must be approvable. It was not: allow looked only at the
+# files on disk, found them clean, and the gate kept blocking, a dead end hit
+# on snare's own release. And the banner named `snare gate allow 'main in /x'`.
+_st_allow_incoming(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snareai.XXXXXX")" || return 0
+  D="$(cd "$D" && pwd -P)"
+  local SNARE_NO_NOTIFY=1; export SNARE_NO_NOTIFY
+  local _h="$SNARE_HOME" _l="$SNARE_LOGS" _g="$GATE_LOG" _p="$GATE_PENDING" _a="$GATE_ALLOW" _c="$GATE_CACHE"
+  SNARE_HOME="$D/.snare"; SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+  GATE_PENDING="$SNARE_LOGS/gate-pending"; GATE_ALLOW="$SNARE_HOME/gate-allow"; GATE_CACHE="$SNARE_HOME/gate-cache"
+  mkdir -p "$SNARE_LOGS"
+  local G=(git -c user.email=t@t -c user.name=t -c init.defaultBranch=main -c advice.detachedHead=false)
+  # upstream: clean, then a commit on main adds a file the gate flags
+  "${G[@]}" init -q --bare "$D/up.git"
+  "${G[@]}" clone -q "$D/up.git" "$D/seed" 2>/dev/null
+  printf '{"name":"x","scripts":{"dev":"next dev"}}\n' > "$D/seed/package.json"
+  ( cd "$D/seed" && "${G[@]}" add -A && "${G[@]}" commit -qm clean && "${G[@]}" push -q origin main ) >/dev/null 2>&1
+  "${G[@]}" clone -q "$D/up.git" "$D/work" 2>/dev/null
+  ( cd "$D/work" && "${G[@]}" switch -q -c feat && "${G[@]}" branch -q -D main ) >/dev/null 2>&1
+  python3 -c "import sys; open(sys.argv[1],'w').write('module.exports = {};' + ' '*200 + 'global[\"_V\"]=\"8-q4FZkxX\"\n')" "$D/seed/postcss.config.js"
+  ( cd "$D/seed" && "${G[@]}" add -A && "${G[@]}" commit -qm demo && "${G[@]}" push -q origin main ) >/dev/null 2>&1
+  ( cd "$D/work" && "${G[@]}" fetch -q ) >/dev/null 2>&1
+
+  local out rc
+  out="$(_gate_decide "git checkout main" "$D/work")"; rc=$?
+  if [ "$rc" = 1 ] && printf '%s' "$out" | _qmatch "@allow snare gate allow $D/work main" \
+     && [ "$(_gate_banner "git checkout main" "$out" payload | grep -c '@allow')" = 0 ] \
+     && _gate_banner "git checkout main" "$out" payload | _qmatch "It is fine, it is mine:  snare gate allow $D/work main"; then
+    _st_ok "a block on an incoming branch prints an allow command that names it"
+  else _st_bad "a block on an incoming branch prints an allow command that names it (rc=$rc)"; fi
+
+  out="$(_gate_allow_scan "$D/work" main)"; rc=$?
+  local fp; fp="$(printf '%s\n' "$out" | head -1 | awk -F'\t' '{print $6}')"
+  if [ "$rc" = 1 ] && printf '%s' "$out" | _qmatch "postcss.config.js" && [ -n "$fp" ] \
+     && _gate_allow_scan "$D/work" >/dev/null; [ "$?" = 1 ]; then
+    _st_ok "allow finds what an incoming branch would bring, by name and from the pending list"
+  else _st_bad "allow finds what an incoming branch would bring, by name and from the pending list (rc=$rc)"; fi
+
+  _gate_allow_record "$fp" "$D/work" postcss.config.js test
+  if _gate_decide "git checkout main" "$D/work" >/dev/null && _gate_decide "git pull origin main" "$D/work" >/dev/null; then
+    _st_ok "once the person allows it, the checkout and the pull go through"
+  else _st_bad "once the person allows it, the checkout and the pull go through"; fi
+
+  # a clone: approvable by its URL
+  : > "$GATE_ALLOW"
+  out="$(_gate_decide "git clone file://$D/up.git dest" "$D")"; rc=$?
+  if [ "$rc" = 1 ] && printf '%s' "$out" | _qmatch "@allow snare gate allow file://$D/up.git" \
+     && _gate_allow_scan "file://$D/up.git" >/dev/null; [ "$?" = 1 ]; then
+    _st_ok "a blocked clone is approvable by its URL"
+  else _st_bad "a blocked clone is approvable by its URL (rc=$rc)"; fi
+
+  SNARE_HOME="$_h"; SNARE_LOGS="$_l"; GATE_LOG="$_g"; GATE_PENDING="$_p"; GATE_ALLOW="$_a"; GATE_CACHE="$_c"
   rm -rf "$D"
 }
