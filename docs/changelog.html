@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.4.3">v1.4.3</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.5.0">v1.5.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -105,12 +105,164 @@ snare update && snare selftest</pre></div></div>
     </div>
   </section>
 
+<section class="stack" id="v1-5-0">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.5.0</h2>
+      <span class="rel-date">2026-10-14</span>
+        <span class="tag now">Current</span>
+    </div>
+    <div class="rel-group">
+      <h3>Added — the gate: scan before code comes in or runs</h3>
+      <ul class="rel-list">
+        <li><strong><code>git clone</code></strong> clones to a quarantine directory first and scans that. The clone you asked for only happens if it is clean.</li>
+        <li><strong><code>git pull</code>, <code>merge</code>, <code>rebase</code>, <code>checkout</code>, <code>switch</code></strong> run <code>git fetch</code> — which executes nothing — then scan the incoming tree in a throwaway worktree, plus the forged-force-push check, before a single file lands in your working copy.</li>
+        <li><strong><code>npm</code>/<code>pnpm</code>/<code>yarn</code>/<code>bun install</code>, <code>npm ci</code>, <code>npx</code>, <code>npm run …</code>, <code>node</code>, <code>next</code>, <code>vite</code>, <code>tsx</code>, <code>turbo</code></strong> scan the directory they would run in. Anything in the npm family that is not on a short read-only list (<code>view</code>, <code>ls</code>, <code>--version</code>…) is gated: an unknown subcommand is treated as one that runs code.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — <code>snare agents</code>: the gate in front of every coding agent</h3>
+      <ul class="rel-list">
+        <li><strong>A Claude Code <code>PreToolUse</code> hook</strong> in <code>~/.claude/settings.json</code>. This is the part that actually protects you: it runs whether or not the agent reads or agrees with its instructions, and exit 2 stops the command and hands the findings to the agent. A block reads <strong>"FIRE ON THE MOUNTAIN"</strong>, tells the agent to stop and tell you, and raises a desktop notification in case it does not.</li>
+        <li><strong>An instruction block</strong> in <code>~/.claude/CLAUDE.md</code>, <code>~/.claude/AGENTS.md</code>, <code>~/AGENTS.md</code>, Codex's <code>~/.codex/AGENTS.md</code> and Gemini's <code>GEMINI.md</code> — only for tools that are installed. Advisory, for agents with no hook mechanism: run <code>snare gate -- &lt;command&gt;</code> first, and on a block, stop and tell the user rather than route around it.</li>
+        <li><strong><code>--project [dir]</code></strong> writes the same block into a repository's own <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code> and Copilot instructions, plus a project hook that calls <code>snare</code> by name, so teammates who have snare are covered too.</li>
+        <li>The plugin ships the hook as well. Installed both ways, the plugin defers to the global hook rather than scanning twice.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Measured</h3>
+      <ul class="rel-list">
+        <li>An agent's everyday commands — <code>ls</code>, <code>git status</code>, <code>git diff</code>, <code>rg</code> — pay <strong>~30ms</strong>, because a pure-bash pre-filter answers before snare loads. The first version cost ~370ms on every one.</li>
+        <li>A clean repository costs ~1.2s the first time and ~0.4s after, because clean verdicts are cached against HEAD, upstream, working-tree status and the files the known routes live in — including gitignored ones, since a payload dropped into an ignored <code>.vscode/</code> changes nothing <code>git status</code> sees. Findings are never cached.</li>
+        <li><code>snare scan repo</code> gained <code>SNARE_FAST</code>, which the gate uses: the repository's own files and the forged-push check, without <code>node_modules</code> or the full history walk. <code>snare scan repo</code> itself is unchanged and remains the full check.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Changed — a block shows what is suspected and where; the person decides</h3>
+      <ul class="rel-list">
+        <li><strong>It is fine, it is mine:</strong> <code>snare gate allow [dir]</code>, in their own terminal. It walks through each finding and asks. An approval is stored in <code>~/.snare/gate-allow</code> — never in the repository, where a payload could ship its own — and is tied to the file's <strong>content</strong>: change the file and it is flagged again. <code>snare gate allowed</code> lists approvals; <code>snare gate forget</code> withdraws them.</li>
+        <li><strong>Let snare take charge:</strong> <code>snare respond</code>, the guided clean-up.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Changed — the agent setup asks first</h3>
+      <ul class="rel-list">
+        <li>The installer, the first run after upgrading and <code>snare update</code> each show what would change and ask once (<code>[Y/n]</code>). They read the answer from the terminal, so <code>curl … | bash</code> can still ask.</li>
+        <li>No terminal, CI, or a coding agent running snare: nothing is installed and nothing is recorded, so a person is asked next time.</li>
+        <li>A "no" is remembered. <code>snare agents install</code> is the yes, typed by hand.</li>
+        <li><code>snare agents sync</code> only refreshes a setup someone already agreed to; it never installs one.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — snare never deletes a repository, an organization or a remote branch</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — <code>snare respond</code> replayed an old run and never said what it found</h3>
+      <ul class="rel-list">
+        <li>The gate now records each place it stops. respond opens with them, re-checked now: every location with its line, the suspicion and the code. For each one the person chooses <strong>c</strong>lean (snare strips or removes what it flagged, backs up uncommitted files first, and stages the change for review; nothing is committed or pushed), <strong>a</strong>llow (it is theirs), or <strong>l</strong>eave (it stays blocked and stays on the list).</li>
+        <li>If nothing was confirmed as real, respond offers to stop there rather than pushing someone through a full credential rotation over a false alarm.</li>
+        <li>A finished run starts a fresh check, and its record is kept as <code>respond-state.prev</code>.</li>
+        <li>Flagged repositories are named in the scan step and the summary, with "cleaned" or "NOT cleaned yet". A repo you said no to stays listed.</li>
+        <li>Cleaning a local checkout pins the git settings that can run a program (<code>core.fsmonitor</code> and the rest), the same set the gate uses.</li>
+        <li><code>snare respond</code> approves and cleans, so an agent is refused it, the same as <code>snare gate allow</code>. <code>snare respond --status</code> stays open.</li>
+        <li>The selftest no longer writes test entries into the real gate state.</li>
+        <li><strong>Gate:</strong> a script that <em>sourced</em> a library had only refusals kept from it. Sourcing runs every top-level line, so <code>bash run.sh</code> that sources a lib which clones and installs another repository checked neither. Sourced and nested scripts are now classified in full (found by automated review).</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the gate could run the code it was checking</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — more ways past the gate, from further review passes</h3>
+      <ul class="rel-list">
+        <li><code>curl … | bash</code> runs whatever arrives; it is reported as unverifiable, for the person to decide.</li>
+        <li><code>curl -o x.sh … &amp;&amp; bash x.sh</code>: the script does not exist until the same command creates it, so it cannot be read in advance — unverifiable.</li>
+        <li><code>git fetch --upload-pack=…</code> and <code>--receive-pack</code> run a program for a local remote; <code>git config</code> writes (<code>core.hooksPath</code>, <code>alias.x '!…'</code>) arm one for later; <code>export NODE_OPTIONS=…</code> and similar arm the next command. All are checked now — and the fast path no longer waves through any command with a quote or an exec-style option.</li>
+        <li>A planted script in <code>.git/hooks</code> (or a configured <code>core.hooksPath</code>) fires on the next commit, and is now read like any other route.</li>
+        <li><code>bash /path/to/snare gate allow</code> is still snare, and is still refused.</li>
+        <li>An agent's own file tools never pass through the shell hook, so it could have written an approval straight into <code>~/.snare/gate-allow</code>. <code>snare agents install</code> now adds Claude Code permission rules denying the agent <code>Edit</code> and <code>Write</code> on <code>~/.snare</code>, which Claude Code enforces on every tool; they are removed on uninstall, and your other permissions are left exactly as they were. Writing that directory from the shell is refused by the gate — reading it is fine, and so is any other <code>SNARE_HOME</code>.</li>
+        <li><strong>The narrower check had dropped coverage.</strong> It only looked at routes, so a payload hidden in an ordinary source file the app imports — which the full scan always found — went unseen. A bounded pass over the source (6000 files, 64MB) now looks for campaign markers and code hidden past whitespace, requiring the hidden part to look obfuscated so aligned comments and minified bundles are not reported. Re-measured on all 67 local repositories: still no false alarms.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — a sixth review pass</h3>
+      <ul class="rel-list">
+        <li><strong>A repository could exempt itself.</strong> The route check skipped any directory holding a <code>.snare-tool</code> file, as snare's own source does — so a repository that shipped that one empty file was never checked. Only snare's actual install is exempt now.</li>
+        <li><strong>A cached clean outlived a source change.</strong> The source pass reads every script, but the cache key only covered the routes; it now covers every file the check reads.</li>
+        <li><strong><code>n\&lt;newline&gt;pm install</code></strong> is <code>npm install</code> to bash, which deletes a backslash-newline; the tokenizer had turned it into a space.</li>
+        <li><strong>A redirect glued to a word</strong> — <code>echo x&gt;~/.snare/gate-allow</code> — and an interpreter writing snare's state from inside a quoted string were not seen as writes. Any write into the state directory, not only the named files, is refused. (An HMAC over approvals was considered and not done: on a single-user machine there is nowhere to keep the key that the agent cannot also read, so the boundary that holds is Claude Code's deny rules.)</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the gate's check was the full scan, and timed out</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — husky was reported as malware</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — "read-only" programs that can run a command</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Changed — the gate decides what is safe, not what is dangerous</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — upgrading did not install the gate</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the gate's own bypasses, before it shipped</h3>
+      <ul class="rel-list">
+        <li><strong>A newline before the command.</strong> The hook receives the command JSON-encoded, so a newline is the two characters <code>\n</code>; <code>cd app\nnpm install</code> put the letter <code>n</code> directly before <code>npm</code>, the word boundary failed, and <strong>every multi-line agent command skipped the gate entirely</strong>. The same for a tab.</li>
+        <li><strong>The agent could switch it off.</strong> <code>SNARE_SKIP_GATE=1 npm install</code> was honoured when it appeared in the command — and the agent writes the command, so a README or issue that talked it into that prefix turned the gate off. An in-command bypass no longer exists. The environment variable still works, because it is set where Claude Code was launched, which the agent cannot change, and it is logged and announced every time.</li>
+        <li><strong>Wrapping it.</strong> <code>sh -c "npm install"</code>, <code>bash -lc '…'</code>, <code>eval "…"</code>, and a heredoc fed to <code>bash</code>. The gate now reads inside them.</li>
+        <li><strong>Launchers.</strong> <code>corepack pnpm install</code>, <code>volta run npm install</code>, <code>cross-env … npm run dev</code>, <code>timeout 60 npm install</code>, and similar. The gate looks through them to the program they start.</li>
+        <li><strong>Checking out a branch that exists only on the remote.</strong> <code>git checkout feat</code> creates <code>feat</code> from <code>origin/feat</code>; the gate read "no such local ref" as "nothing to check". It now resolves the remote copy and scans it.</li>
+        <li><strong><code>gh pr checkout</code> and <code>gh repo clone</code></strong>, which bring code in — a pull request's head can come from anyone's fork — and were not seen at all.</li>
+        <li><strong>A slow scan let the command through.</strong> When Claude Code's hook timeout fires it treats the hook as failed and runs the command anyway. The gate now keeps its own shorter deadline and blocks when it is hit, and kills the whole scan tree — the first attempt killed only the direct child and left a timed-out <code>git clone</code> of the Linux kernel downloading in the background.</li>
+        <li><strong>The installed hook command</strong> embedded snare's path in hand-written quotes; a path containing a quote would have become code that runs before every agent command. It is <code>%q</code>-quoted now, and tested with a hostile path.</li>
+        <li><strong>A clone URL could be read as an option.</strong> <code>--</code> now separates them.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — the shell shield broke npm for every coding agent</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed while building it</h3>
+      <ul class="rel-list">
+        <li><strong>The first version called an empty clone clean.</strong> A remote whose <code>HEAD</code> names a branch that does not exist clones to an empty checkout, and the gate scanned that empty directory and let it through — a verdict about code it never looked at. It now fetches and scans every branch tip when nothing is checked out.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Known limits</h3>
+      <ul class="rel-list">
+        <li>The hook covers Claude Code. Codex, Cursor and Gemini get the instruction block, which they can ignore; Cursor's own shell hooks are a natural next step.</li>
+        <li>It reads commands, not intent: a script file that runs <code>npm install</code> inside it is checked only as far as the command that launches it shows. A value assembled at run time is reported as unverifiable rather than guessed.</li>
+        <li><code>npm install &lt;package&gt;</code> from a registry or a git URL runs that package's own lifecycle scripts; the gate checks the repository you are in, not the package you are adding.</li>
+        <li>The gate checks the repository's own files. <code>node_modules</code> is left to <code>snare scan repo</code>, and npm itself to <code>snare doctor</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <section class="stack" id="v1-4-3">
   <div class="rel">
     <div class="rel-head">
       <h2 class="rel-v">1.4.3</h2>
       <span class="rel-date">2026-10-13</span>
-        <span class="tag now">Current</span>
     </div>
     <div class="rel-group">
       <h3>Fixed — <code>--purge-history</code> reported zero while a payload stayed in history</h3>
@@ -557,7 +709,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.3</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.5.0</a> · MIT</span>
   </div>
 </footer>
 </div>

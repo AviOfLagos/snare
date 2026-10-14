@@ -101,6 +101,12 @@ cmd_scan_repo(){
     [ -n "$_lit" ] && ioc_literals > "$_lit"
     _re="$(ioc_regexes)"
     local _ex=(); if snare_has_rg; then _ex=(${EXCL_RG[@]+"${EXCL_RG[@]}"}); else _ex=(${EXCL[@]+"${EXCL[@]}"}); fi
+    # SNARE_FAST: the gate runs this before every install and pull, so it
+    # checks the repository's own files and leaves node_modules to the full
+    # scan. Without it a big tree costs tens of seconds per agent command.
+    if [ -n "${SNARE_FAST:-}" ]; then
+      if snare_has_rg; then _ex+=(-g '!node_modules'); else _ex+=(--exclude-dir=node_modules); fi
+    fi
     [ -s "$_lit" ] && _of="$(snare_grep_tree lit "$_lit" ${_ex[@]+"${_ex[@]}"} | head -40)"
     # Guard: an empty regex matches every line in the tree.
     [ -n "$_re" ] && _oe="$(snare_grep_tree re  "$_re"  ${_ex[@]+"${_ex[@]}"} | head -40)"
@@ -207,7 +213,19 @@ for k,v in s.items():
       [ -f "$dr" ] && _hit "$dr — ChainDrop dropper artefact (see snare respond)"
     done
 
-    [ -d .husky ] && { _hit ".husky/ present (runs on git operations)"; ls -1 .husky | sed 's/^/        /'; }
+    # Husky is ordinary tooling — flagging its presence made every repository
+    # that uses it "infected", and blocked agents in them. What its hooks RUN
+    # is what matters.
+    if [ -d .husky ]; then
+      local hk bad_hook=0
+      for hk in .husky/*; do
+        [ -f "$hk" ] || continue
+        if grep -qE 'curl|wget|base64|\beval\b|child_process|node[^|;&]*[[:space:]]--?(e|p|eval|print)([[:space:]]|=|$)|\|[[:space:]]*(sh|bash)' "$hk" 2>/dev/null; then
+          _hit "$hk — this git hook downloads or evaluates code:"; grep -nE 'curl|wget|base64|eval|child_process|node' "$hk" | head -3 | sed 's/^/        /'; bad_hook=1
+        fi
+      done
+      [ "$bad_hook" = 0 ] && dim "  .husky/ hooks present — they run on commit/push; contents look ordinary"
+    fi
     for hook in .git/hooks/*; do
       [ -f "$hook" ] || continue; case "$hook" in *.sample) continue;; esac
       [ -x "$hook" ] && _hit "active local git hook: $hook"
@@ -339,11 +357,16 @@ for k,v in s.items():
       dim "  skipped (snare's own repo)"
     elif git rev-parse --git-dir >/dev/null 2>&1; then
       hdr "5. Git history (all branches, all commits)"
+      # The pickaxe walk is the slow part and is skipped in SNARE_FAST: what
+      # is about to run is the tree, not the history. The forged-push check
+      # below is cheap and is exactly what a pull needs, so it always runs.
+      if [ -z "${SNARE_FAST:-}" ]; then
       while IFS= read -r pat; do
         [ -z "$pat" ] && continue
         local c; c="$(git log --all --oneline -S"$pat" --pickaxe-regex 2>/dev/null | head -3)"
         [ -n "$c" ] && { _hit "'$pat' appears in history:"; echo "$c" | sed 's/^/        /'; }
       done < <(ioc_list)
+      fi
 
       # Forged force-push (campaign 4738-2, reported in #47). The remote tip
       # is rewritten carrying the real commit's subject, author and author

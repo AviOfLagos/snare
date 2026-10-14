@@ -160,6 +160,13 @@ cmd_doctor(){
     stopped) ylw "  guard is installed but NOT running (snare guard start)" ;;
     *)       ylw "  guard not installed (snare guard install)" ;;
   esac
+  # The gate is what stops an agent pulling or running poisoned code; saying
+  # nothing about it here would let someone believe doctor covered that.
+  if grep -q 'gate --hook' "$HOME/.claude/settings.json" 2>/dev/null; then
+    grn "  agent gate is on — clones, pulls, installs and runs are scanned first"
+  elif [ -d "$HOME/.claude" ]; then
+    ylw "  agent gate is off — a coding agent can pull or run code unchecked (snare agents install)"
+  fi
   if [ -s "$SNARE_LOGS/origins.log" ]; then
     local n; n="$(grep -c '^\[' "$SNARE_LOGS/origins.log" 2>/dev/null | tr -d ' ')"
     ylw "  ${n:-0} past detection(s) recorded — snare guard origins"

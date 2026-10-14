@@ -67,7 +67,7 @@ $SHIELD_BEGIN
 # Scans the working directory before a package manager can execute anything.
 # Bypass once:  SNARE_SKIP_SHIELD=1 npm install
 # Remove:       snare shield uninstall
-_snare_shield_guard() {
+snare_shield_guard() {
   local _tool="\$1"; shift
   # Never interfere with CI or an explicit bypass. Do NOT gate on a tty:
   # "npm install > log 2>&1" is not a tty and must still be protected. Scripts
@@ -86,11 +86,16 @@ _snare_shield_guard() {
   fi
   command "\$_tool" "\$@"
 }
-npm()  { _snare_shield_guard npm  "\$@"; }
-pnpm() { _snare_shield_guard pnpm "\$@"; }
-yarn() { _snare_shield_guard yarn "\$@"; }
-bun()  { _snare_shield_guard bun  "\$@"; }
-npx()  { _snare_shield_guard npx  "\$@"; }
+# A wrapper must never be the thing that breaks the tool. Claude Code copies
+# your shell functions into its own shell but drops ones starting with "_",
+# which left npm calling a helper that did not exist: every npm, pnpm, yarn,
+# bun and npx an agent ran failed with "command not found". The helper has no
+# leading underscore now, and if it is missing anyway the real tool runs.
+npm()  { if typeset -f snare_shield_guard >/dev/null 2>&1; then snare_shield_guard npm  "\$@"; else command npm  "\$@"; fi; }
+pnpm() { if typeset -f snare_shield_guard >/dev/null 2>&1; then snare_shield_guard pnpm "\$@"; else command pnpm "\$@"; fi; }
+yarn() { if typeset -f snare_shield_guard >/dev/null 2>&1; then snare_shield_guard yarn "\$@"; else command yarn "\$@"; fi; }
+bun()  { if typeset -f snare_shield_guard >/dev/null 2>&1; then snare_shield_guard bun  "\$@"; else command bun  "\$@"; fi; }
+npx()  { if typeset -f snare_shield_guard >/dev/null 2>&1; then snare_shield_guard npx  "\$@"; else command npx  "\$@"; fi; }
 
 # git clone is safe in itself; the danger is what you do next. Scan the fresh
 # clone and say so before you cd into it.

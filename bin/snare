@@ -3,7 +3,28 @@
 # https://github.com/  •  MIT
 set -uo pipefail
 
-SNARE_VERSION="1.4.3"
+SNARE_VERSION="1.5.0"
+
+# Fast path for the agent hook. It runs before EVERY shell command an agent
+# issues, so the commonest read-only ones must cost almost nothing. It may only
+# ever say "this is trivially safe": one simple command, first word on a short
+# read-only list, and not a single shell metacharacter — no pipe, no `;`, no
+# `$`, no backtick, no brace, not even an escaped newline. Anything else goes
+# to the full check. (The first version keyed on trigger words like "npm"
+# instead, and `eslint .` — which executes the repo's config — sailed past.)
+if [ "${1:-}" = gate ] && [ "${2#--hook}" != "${2:-}" ]; then
+  SNARE_HOOK_INPUT="$(cat)"
+  _c=""
+  _re='"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  [[ $SNARE_HOOK_INPUT =~ $_re ]] && _c="${BASH_REMATCH[1]}"
+  _triv='^[[:space:]]*(ls|cat|head|tail|wc|pwd|echo|rg|grep|stat|file|which|type|tree|du|df|diff|sort|uniq|cut|jq|date|whoami|git[[:space:]]+(status|diff|log|show|branch|rev-parse|ls-files|remote|blame|grep|describe|tag|fetch|reflog|shortlog))([[:space:]]|$)'
+  _meta='[;&|<>()`$'"'"']|\\[ntr"]|[{}]'
+  _flag='(^|[[:space:]])(--pre|--exec|-x|-X|--compress-program|--upload-pack|--receive-pack|-u|-c|--ext-diff|--textconv|--open-files-in-pager|-O)([=[:space:]]|$)'
+  if [ -n "$_c" ] && [[ $_c =~ $_triv ]] && ! [[ $_c =~ $_meta ]] && ! [[ $_c =~ $_flag ]]; then
+    exit 0
+  fi
+  export SNARE_HOOK_INPUT
+fi
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so
 # BASH_SOURCE is the link, not the real file. (readlink -f is not portable.)
 _src="${BASH_SOURCE[0]}"
@@ -54,6 +75,8 @@ fi
 . "$_dir/lib/hook.sh"
 . "$_dir/lib/ci.sh"
 . "$_dir/lib/shield.sh"
+. "$_dir/lib/gate.sh"
+. "$_dir/lib/agents.sh"
 . "$_dir/lib/rotate.sh"
 . "$_dir/lib/respond.sh"
 . "$_dir/lib/doctor.sh"
@@ -101,6 +124,12 @@ ${C_BLD}WATCH${C_OFF}
   snare baseline status | clear
 
 ${C_BLD}PREVENT${C_OFF}
+  snare agents install          make coding agents scan before they clone, pull, install or run
+  snare agents status | uninstall
+  snare agents install --project [dir]   also this repo's CLAUDE.md, AGENTS.md and hook
+  snare gate -- <command>       scan first; exit 0 means safe to run it
+  snare gate allow [dir]        you looked and it is yours: allow what was flagged (asks per item)
+  snare gate allowed | forget [dir|all]
   snare shield install          scan before npm/pnpm/yarn/bun/git clone runs anything
   snare shield status | uninstall
   snare shield check [path]     the fast check on its own, without installing
@@ -176,6 +205,8 @@ main(){
     hook)   cmd_hook "$@" ;;
     ci)     cmd_ci "$@" ;;
     shield) cmd_shield "$@" ;;
+    gate)   cmd_gate "$@" ;;
+    agents) cmd_agents "$@" ;;
     rotate) cmd_rotate "$@" ;;
     # internal: the detached cache refresh behind the update nudge
     c2)     cmd_c2 "$@" ;;
@@ -192,6 +223,28 @@ main(){
     *) red "unknown command: $c"; echo; usage; exit 2 ;;
   esac
 }
+# One-time migration onto the agent gate. `snare update` cannot do this for
+# the people who need it most: the process running the update is still the
+# OLD code, which has never heard of the gate, so an upgrade from 1.4.x
+# finished cleanly and left the gate uninstalled — measured, not supposed.
+# So the first command the NEW code runs ASKS, once, at a terminal. Not in
+# the hook's hot path, not in CI, not under an agent, never after a "no" or
+# `snare agents uninstall`.
+case "${1:-}" in
+  gate|agents|_update-refresh|_c2-refresh) ;;
+  *)
+    # Ask once, at a terminal, before touching anyone's agent files. An
+    # upgrade from 1.4.x used to switch this on without asking.
+    if [ -z "${SNARE_NO_AGENTS:-}" ] && [ -t 0 ] && [ -t 1 ] \
+       && [ ! -f "$SNARE_HOME/agents-migrated" ] && [ ! -f "$SNARE_HOME/agents-declined" ] \
+       && { [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ] || [ -d "$HOME/.gemini" ]; }; then
+      case "${1:-}" in
+        gate|agents|selftest|version|--version|-v|help|--help|-h) ;;
+        *) snare_agents_offer || true ;;
+      esac
+    fi ;;
+esac
+
 # One line, at most once a day, never blocking — see snare_update_nudge.
 # Runs after the command so it never delays output, and never changes the
 # command's own exit status.

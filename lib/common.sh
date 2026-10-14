@@ -279,6 +279,61 @@ short_hash(){
   fi
 }
 
+# ---- snare never deletes a repository or an organization -------------------
+# Not "does not today" — CANNOT. Every gh and git call snare makes goes
+# through these two functions, which refuse anything that deletes or archives
+# a repository, touches an organization destructively, or deletes refs on a
+# remote. snare cleans repositories; losing one is never an acceptable outcome
+# of cleaning it, whatever a bug, a future change or a crafted input asks for.
+# The selftest and CI also fail if any code calls `command gh`/`command git`
+# to get around them.
+snare_refuse(){ red "  snare refused: $* — snare never deletes repositories, organizations or remote branches." >&2; return 97; }
+gh(){
+  local a sub2="" i=0 meth="" api=0 low
+  for a in "$@"; do
+    i=$((i + 1))
+    case "$i" in 1) [ "$a" = api ] && api=1 ;; 2) sub2="$a" ;; esac
+    low="$(printf '%s' "$a" | tr '[:upper:]' '[:lower:]')"
+    case "$low" in
+      -xdelete|--method=delete|-x=delete) meth=delete ;;
+      delete) [ "$meth" = pending ] && meth=delete ;;
+      -x|--method) meth=pending ;;
+    esac
+    # GraphQL mutations that delete or archive (deleteRepository, archiveRepository, …)
+    [ "$api" = 1 ] && case "$low" in *deleterepository*|*archiverepository*|*deleteref*|*transferrepository*) meth=delete ;; esac
+  done
+  case "${1:-}" in
+    repo|org) case "$sub2" in delete|archive|rename|transfer|unarchive) snare_refuse "gh $1 $sub2"; return 97 ;; esac ;;
+  esac
+  [ "$sub2" = delete ] && { snare_refuse "gh $1 delete"; return 97; }
+  [ "$api" = 1 ] && [ "$meth" = delete ] && { snare_refuse "gh api DELETE"; return 97; }
+  command gh "$@"
+}
+snare_safe_git(){
+  # find the subcommand past git's own leading options (-c k=v, -C dir, …)
+  local args=("$@") i=0 n=$# sub="" a
+  while [ "$i" -lt "$n" ]; do
+    a="${args[$i]}"
+    case "$a" in
+      -c|-C|--git-dir|--work-tree|--namespace) i=$((i + 2)); continue ;;
+      -*) i=$((i + 1)); continue ;;
+      *) sub="$a"; break ;;
+    esac
+  done
+  if [ "$sub" = push ]; then
+    local j=$((i + 1))
+    while [ "$j" -lt "$n" ]; do
+      a="${args[$j]}"
+      case "$a" in
+        --delete|-d|--mirror|--prune|:*|+:*) snare_refuse "git push $a"; return 97 ;;
+      esac
+      j=$((j + 1))
+    done
+  fi
+  command git "$@"
+}
+git(){ snare_safe_git "$@"; }
+
 gh_user(){ gh api user --jq .login 2>/dev/null; }
 
 # ---------------------------------------------------------------- platform
@@ -334,6 +389,8 @@ snare_open(){ # open a URL/file in the desktop default handler
 }
 
 snare_desktop_notify(){ # $1=message
+  # selftest exercises the alarms on purpose; it must not raise real ones.
+  [ -n "${SNARE_NO_NOTIFY:-}" ] && return 0
   case "$SNARE_OS" in
     macos) osascript -e "display notification \"$1\" with title \"snare\" sound name \"Basso\"" >/dev/null 2>&1 ;;
     linux|wsl) command -v notify-send >/dev/null && notify-send -u critical "snare" "$1" >/dev/null 2>&1 ;;

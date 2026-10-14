@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.4.3">v1.4.3</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.5.0">v1.5.0</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -155,6 +155,42 @@ snare selftest                  prove detection still works against known sample
     report <em>clean</em> on infected repositories. It builds a scratch repo of known-bad
     and known-good samples, runs the real scanner, and exits non-zero on any mismatch.
     If it fails, do not trust any clean result until it passes.</p>
+  </section>
+
+  <section class="stack" id="gate">
+    <span class="eyebrow">Stop it coming in</span>
+    <h2>The gate, for you and for coding agents</h2>
+    <div class="panel"><div class="panel-bar"><span class="label">Gate · agents</span><div class="bar-actions"></div></div>
+      <div class="scroller"><pre>snare agents install            gate every clone, pull, install and run an agent does
+snare agents status | uninstall
+snare agents install --project  also this repo's CLAUDE.md / AGENTS.md and a project hook
+snare gate -- &lt;command&gt;         scan first; exit 0 means safe to run it
+snare gate allow [dir]          you looked and it is yours: allow what was flagged
+snare gate allowed | forget     review or withdraw what you allowed</pre></div></div>
+
+    <p class="note"><strong>A block is what snare suspects, not a verdict.</strong> It lists each
+    finding as the file, the line and what is suspected, so you can look — it can be a false
+    alarm. Then you decide: <code>snare gate allow</code> if it is yours, or
+    <code>snare respond</code> to let snare take charge. Approvals live in
+    <code>~/.snare</code>, never in the repository, and lapse if the file changes. A coding agent
+    cannot approve its own block: it is told to stop and show you, and an agent that tries is
+    refused.</p>
+
+    <p class="note">The <strong>gate</strong> answers one question before a command runs: does it
+    bring code in or execute it, and is that code clean? <code>git clone</code> is cloned to a
+    quarantine directory and scanned first. <code>git pull</code>, <code>merge</code>,
+    <code>rebase</code> and <code>checkout</code> fetch — which runs nothing — and scan the incoming
+    tree in a throwaway worktree before a file lands. Installs and <code>npm run</code> scan the
+    directory they would run in. It fails closed: if the scan cannot finish, the command does not
+    run.</p>
+
+    <p class="note"><strong>For coding agents</strong>, <code>snare agents install</code> adds a
+    Claude Code <code>PreToolUse</code> hook — enforced, so the agent cannot skip it — and a short
+    instruction block in <code>CLAUDE.md</code>, <code>AGENTS.md</code> and <code>GEMINI.md</code>
+    for agents without hooks. A block reads <em>"FIRE ON THE MOUNTAIN"</em>, tells the agent to stop
+    and tell you, and raises a desktop notification. Ordinary commands like <code>git status</code>
+    cost about 30ms. <code>install.sh</code> sets it up and <code>snare update</code> keeps it current;
+    <code>snare agents uninstall</code> removes it and keeps it removed.</p>
   </section>
 
   <section class="stack" id="stop">
@@ -342,7 +378,7 @@ snare version                   version and commit</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.4.3</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.5.0</a> · MIT</span>
   </div>
 </footer>
 </div>
