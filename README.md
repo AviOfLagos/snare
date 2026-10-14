@@ -5,6 +5,11 @@
 [![Maintained](https://img.shields.io/badge/maintained-actively-brightgreen)](https://github.com/nexlabz/snare/commits/main)
 [![Last commit](https://img.shields.io/github/last-commit/nexlabz/snare)](https://github.com/nexlabz/snare/commits/main)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/nexlabz/snare?style=social)](https://github.com/nexlabz/snare/stargazers)
+
+> **216 developers cloned snare in the two weeks to 14 October 2026.** If it caught
+> something for you, or just made you check, [⭐ star it](https://github.com/nexlabz/snare/stargazers).
+> Stars are how the next person finds it before the payload finds them.
 
 **A supply-chain attack `npm audit` cannot see — and the scanner that finds it.**
 

@@ -145,6 +145,33 @@ snare update && snare selftest</pre></div></div>
       </ul>
     </div>
     <div class="rel-group">
+      <h3>Changed — the agent setup asks first</h3>
+      <ul class="rel-list">
+        <li>The installer, the first run after upgrading and <code>snare update</code> each show what would change and ask once (<code>[Y/n]</code>). They read the answer from the terminal, so <code>curl … | bash</code> can still ask.</li>
+        <li>No terminal, CI, or a coding agent running snare: nothing is installed and nothing is recorded, so a person is asked next time.</li>
+        <li>A "no" is remembered. <code>snare agents install</code> is the yes, typed by hand.</li>
+        <li><code>snare agents sync</code> only refreshes a setup someone already agreed to; it never installs one.</li>
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Added — snare never deletes a repository, an organization or a remote branch</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — <code>snare respond</code> replayed an old run and never said what it found</h3>
+      <ul class="rel-list">
+        <li>The gate now records each place it stops. respond opens with them, re-checked now: every location with its line, the suspicion and the code. For each one the person chooses <strong>c</strong>lean (snare strips or removes what it flagged, backs up uncommitted files first, and stages the change for review; nothing is committed or pushed), <strong>a</strong>llow (it is theirs), or <strong>l</strong>eave (it stays blocked and stays on the list).</li>
+        <li>If nothing was confirmed as real, respond offers to stop there rather than pushing someone through a full credential rotation over a false alarm.</li>
+        <li>A finished run starts a fresh check, and its record is kept as <code>respond-state.prev</code>.</li>
+        <li>Flagged repositories are named in the scan step and the summary, with "cleaned" or "NOT cleaned yet". A repo you said no to stays listed.</li>
+        <li>Cleaning a local checkout pins the git settings that can run a program (<code>core.fsmonitor</code> and the rest), the same set the gate uses.</li>
+        <li><code>snare respond</code> approves and cleans, so an agent is refused it, the same as <code>snare gate allow</code>. <code>snare respond --status</code> stays open.</li>
+        <li>The selftest no longer writes test entries into the real gate state.</li>
+        <li><strong>Gate:</strong> a script that <em>sourced</em> a library had only refusals kept from it. Sourcing runs every top-level line, so <code>bash run.sh</code> that sources a lib which clones and installs another repository checked neither. Sourced and nested scripts are now classified in full (found by automated review).</li>
+      </ul>
+    </div>
+    <div class="rel-group">
       <h3>Fixed — the gate could run the code it was checking</h3>
       <ul class="rel-list">
       </ul>
