@@ -117,6 +117,32 @@ stops. This is built to stop a *misled* agent; a process that is already
 hostile and running its own code on the machine is beyond what any scanner
 can stop.
 
+### Fixed — `snare respond` replayed an old run and never said what it found
+
+The gate's banner says "let snare take charge: snare respond". respond then
+ignored what the gate had just stopped. Worse, a FINISHED run was treated as
+one to resume: every step printed "already done — skipping" and the summary
+repeated a month-old "infected repos found: 2", without naming either repo
+or doing anything. Reported from real use.
+
+- The gate now records each place it stops. respond opens with them,
+  re-checked now: every location with its line, the suspicion and the code.
+  For each one the person chooses **c**lean (snare strips or removes what it
+  flagged, backs up uncommitted files first, and stages the change for
+  review; nothing is committed or pushed), **a**llow (it is theirs), or
+  **l**eave (it stays blocked and stays on the list).
+- If nothing was confirmed as real, respond offers to stop there rather than
+  pushing someone through a full credential rotation over a false alarm.
+- A finished run starts a fresh check, and its record is kept as
+  `respond-state.prev`.
+- Flagged repositories are named in the scan step and the summary, with
+  "cleaned" or "NOT cleaned yet". A repo you said no to stays listed.
+- Cleaning a local checkout pins the git settings that can run a program
+  (`core.fsmonitor` and the rest), the same set the gate uses.
+- `snare respond` approves and cleans, so an agent is refused it, the same
+  as `snare gate allow`. `snare respond --status` stays open.
+- The selftest no longer writes test entries into the real gate state.
+
 ### Fixed — the gate could run the code it was checking
 
 To decide what to check, the gate runs `git` inside the repository — and git

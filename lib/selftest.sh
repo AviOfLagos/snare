@@ -229,6 +229,7 @@ JSON
   _st_gate_decide
   _st_gate_round5
   _st_gate_round6
+  _st_respond
   _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
@@ -745,7 +746,7 @@ _st_gate(){
   # Alarms and the verdict cache are real side effects; keep both inside $D.
   local SNARE_NO_NOTIFY=1; export SNARE_NO_NOTIFY
   local _home_was="$SNARE_HOME"; SNARE_HOME="$D/.snare"; GATE_CACHE="$SNARE_HOME/gate-cache"
-  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"; GATE_PENDING="$SNARE_LOGS/gate-pending"
 
   # ---- the classifier: quoted text is not a command
   local acts
@@ -844,7 +845,7 @@ assert d['model']=='opus' and len(d['hooks']['PostToolUse'])==1 and len(d['hooks
   else _st_bad "uninstall restores the files, and update does not put it back"; fi
 
   SNARE_HOME="$_home_was"; GATE_CACHE="$SNARE_HOME/gate-cache"
-  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"; GATE_PENDING="$SNARE_LOGS/gate-pending"
   unset SNARE_NO_NOTIFY
   rm -rf "$D"
 }
@@ -997,7 +998,7 @@ _st_gate_decide(){
   # gate.log, which is an audit trail and must only ever hold real events.
   local _h="$SNARE_HOME" _a="$GATE_ALLOW" _c="$GATE_CACHE" _l="$SNARE_LOGS" _g="$GATE_LOG"
   SNARE_HOME="$D/.snare"; GATE_ALLOW="$SNARE_HOME/gate-allow"; GATE_CACHE="$SNARE_HOME/gate-cache"
-  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+  SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"; GATE_PENDING="$SNARE_LOGS/gate-pending"
   _stj(){ python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"; }
   # stderr is what the agent is shown; stdout is discarded.
   _sth(){ { _stj "$1" "$2" | SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null; } 2>&1; }
@@ -1061,7 +1062,7 @@ _st_gate_decide(){
   if [ -z "$miss" ]; then _st_ok "read-only programs that can run a command through a flag are checked"
   else _st_bad "read-only programs that can run a command through a flag — got through:$miss"; fi
 
-  SNARE_HOME="$_h"; GATE_ALLOW="$_a"; GATE_CACHE="$_c"; SNARE_LOGS="$_l"; GATE_LOG="$_g"; unset SNARE_NO_NOTIFY
+  SNARE_HOME="$_h"; GATE_ALLOW="$_a"; GATE_CACHE="$_c"; SNARE_LOGS="$_l"; GATE_LOG="$_g"; GATE_PENDING="$SNARE_LOGS/gate-pending"; unset SNARE_NO_NOTIFY
   rm -rf "$D"
 }
 
@@ -1148,4 +1149,60 @@ _st_gate_round6(){
   if [ -z "$miss" ]; then _st_ok "line continuations, glued redirects and interpreter writes to snare's state are caught"
   else _st_bad "continuations, glued redirects, interpreter writes — got through:$miss"; fi
   unset SNARE_NO_NOTIFY; rm -rf "$D"
+}
+
+# snare respond: the gate's "let snare take charge" has to lead somewhere real.
+# It replayed a finished run from a month earlier ("infected repos found: 2",
+# never named, nothing done) and never looked at what the gate had stopped.
+_st_respond(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snarers.XXXXXX")" || return 0
+  D="$(cd "$D" && pwd -P)"
+  local SNARE_NO_NOTIFY=1; export SNARE_NO_NOTIFY
+  local _h="$SNARE_HOME" _l="$SNARE_LOGS" _g="$GATE_LOG" _p="$GATE_PENDING" _r="$RESPOND_STATE" _b="$SNARE_BACKUPS" _a="$GATE_ALLOW" _c="$GATE_CACHE"
+  SNARE_HOME="$D/.snare"; SNARE_LOGS="$SNARE_HOME/logs"; GATE_LOG="$SNARE_LOGS/gate.log"
+  GATE_PENDING="$SNARE_LOGS/gate-pending"; RESPOND_STATE="$SNARE_HOME/respond-state"
+  SNARE_BACKUPS="$SNARE_HOME/backups"; GATE_ALLOW="$SNARE_HOME/gate-allow"; GATE_CACHE="$SNARE_HOME/gate-cache"
+  mkdir -p "$SNARE_LOGS"
+  local out rc
+
+  # a missing key is missing, with or without pipefail
+  printf 'a=1\n' > "$RESPOND_STATE"
+  if ( set +o pipefail; ! _rs_get fixed_x/y >/dev/null ) && [ "$(_rs_get a)" = 1 ]; then
+    _st_ok "respond's saved state does not read a missing key as present"
+  else _st_bad "respond's saved state does not read a missing key as present"; fi
+
+  # a finished run starts fresh instead of replaying itself
+  printf 'started=then\nstep_verify=done\ninfected_count=2\n' > "$RESPOND_STATE"
+  _respond_fresh_if_finished >/dev/null
+  if [ ! -f "$RESPOND_STATE" ] && [ -f "$RESPOND_STATE.prev" ]; then
+    _st_ok "a finished respond run starts a fresh check, not a replay"
+  else _st_bad "a finished respond run starts a fresh check, not a replay"; fi
+
+  # the gate records what it stopped; respond shows it and acts on the choice
+  mkdir -p "$D/a"; printf '{"name":"a","scripts":{"dev":"next dev"}}\n' > "$D/a/package.json"
+  python3 -c "import sys; open(sys.argv[1],'w').write('export default {};' + ' '*200 + 'global[\"_V\"]=\"8-q4FZkxX\"\\n')" "$D/a/postcss.config.mjs"
+  mkdir -p "$D/b"; printf '{"name":"b","scripts":{"dev":"node api.js && next dev"}}\n' > "$D/b/package.json"
+  python3 -c "open('$D/b/api.js','w').write('var _0xaf=[];'+'x'*29000)"
+  local r; for r in a b; do ( cd "$D/$r" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm i ) >/dev/null 2>&1; done
+  _gate_decide "npm run dev" "$D/a" >/dev/null; _gate_decide "npm run dev" "$D/b" >/dev/null
+  if [ "$(grep -c "^local" "$GATE_PENDING" 2>/dev/null)" = 2 ]; then
+    _st_ok "the gate records each repository it stopped, for respond"
+  else _st_bad "the gate records each repository it stopped, for respond"; fi
+  : > "$RESPOND_STATE"
+  out="$(printf 'c\nl\nn\n' | _respond_gate 2>&1)"
+  if printf '%s' "$out" | _qmatch "postcss.config.mjs:1" && printf '%s' "$out" | _qmatch "api.js is obfuscated" \
+     && _gate_tree "$D/a" fresh >/dev/null && ! _gate_tree "$D/b" fresh >/dev/null \
+     && [ -n "$(git -C "$D/a" diff --cached --name-only)" ] && [ "$(cut -f2 "$GATE_PENDING")" = "$D/b" ]; then
+    _st_ok "respond names each stopped location, cleans the one chosen, keeps the one left"
+  else _st_bad "respond names each stopped location, cleans the one chosen, keeps the one left"; fi
+
+  # an agent does not get to drive it
+  out="$(python3 -c "$(_gate_py)" "snare respond" "$D" "$SNARE_ROOT")"
+  if printf '%s' "$out" | _qmatch "refuse" && [ -z "$(python3 -c "$(_gate_py)" "snare respond --status" "$D" "$SNARE_ROOT")" ]; then
+    _st_ok "an agent is refused 'snare respond' but may read its --status"
+  else _st_bad "an agent is refused 'snare respond' but may read its --status"; fi
+
+  SNARE_HOME="$_h"; SNARE_LOGS="$_l"; GATE_LOG="$_g"; GATE_PENDING="$_p"; RESPOND_STATE="$_r"
+  SNARE_BACKUPS="$_b"; GATE_ALLOW="$_a"; GATE_CACHE="$_c"
+  rm -rf "$D"
 }

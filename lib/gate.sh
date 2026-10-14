@@ -337,8 +337,11 @@ def handle(argv, depth=0):
 
     # Approving a block or switching the gate off is the user's decision. An
     # agent that tries — directly, through sh -c, eval, a script — is refused.
+    # `snare respond` approves and cleans too, so it is the person's as well
+    # (its read-only --status is not).
     if prog == "snare" and (args[:2] in (["gate", "allow"], ["gate", "forget"])
-                            or args[:2] == ["agents", "uninstall"]):
+                            or args[:2] == ["agents", "uninstall"]
+                            or (args[:1] == ["respond"] and args[1:] != ["--status"])):
         out.append("refuse\t%s\tsnare %s" % (cur, " ".join(args[:2]))); return
     # Writing the user's real approval or opt-out files. Reading them is fine,
     # and so is a different SNARE_HOME (a test, a fixture); a write to the
@@ -1130,6 +1133,19 @@ _gate_pull(){ # $1=dir  $2.. = remote [branch]
 # ------------------------------------------------------------------- verdict
 _gate_log(){ mkdir -p "$SNARE_LOGS" 2>/dev/null; echo "$(date '+%Y-%m-%dT%H:%M:%S') $*" >> "$GATE_LOG" 2>/dev/null; }
 
+# What the gate stopped, for `snare respond` to pick up. The banner sends the
+# person there ("let snare take charge"), so respond has to know WHAT was
+# stopped — without this it ran a generic account sweep and never mentioned
+# the repository that had just been blocked. One line per place:
+#   local<TAB>/path/to/repo<TAB>command      payload committed in a checkout
+#   incoming<TAB>what<TAB>command            stopped before it reached disk
+GATE_PENDING="$SNARE_LOGS/gate-pending"
+_gate_pending_add(){ # $1=kind $2=where $3=command
+  mkdir -p "$SNARE_LOGS" 2>/dev/null
+  [ -f "$GATE_PENDING" ] && grep -qF "$(printf '%s\t%s\t' "$1" "$2")" "$GATE_PENDING" 2>/dev/null && return 0
+  printf '%s\t%s\t%s\n' "$1" "$2" "$(printf '%s' "$3" | tr '\n\t' '  ' | cut -c1-200)" >> "$GATE_PENDING" 2>/dev/null
+}
+
 # $1 = command, $2 = cwd. Prints the verdict on stdout. 0 allow, 1 block.
 _gate_decide(){
   local cmd="$1" cwd="$2" actions kind a b c d rc what seen_top="" out=() blocked=0 cant=0
@@ -1174,7 +1190,12 @@ _gate_decide(){
     esac
     case "$rc" in
       0) ;;
-      1) blocked=1; out+=("$what carries a supply-chain payload:" "$res") ;;
+      1) blocked=1; out+=("$what carries a supply-chain payload:" "$res")
+         case "$kind" in
+           tree|unknown) local ptop; ptop="$("${GATE_GIT[@]}" -C "$what" rev-parse --show-toplevel 2>/dev/null)"
+                         _gate_pending_add local "${ptop:-$what}" "$cmd" ;;
+           *)            _gate_pending_add incoming "$what" "$cmd" ;;
+         esac ;;
       *) cant=1;    out+=("could not finish checking $what:" "$res") ;;
     esac
   done <<< "$actions"
