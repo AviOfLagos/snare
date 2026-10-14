@@ -106,7 +106,8 @@ snare selftest                  prove detection still works against known sample
 snare agents status | uninstall
 snare agents install --project  also this repo's CLAUDE.md / AGENTS.md and a project hook
 snare gate -- &lt;command&gt;         scan first; exit 0 means safe to run it
-snare gate allow [dir]          you looked and it is yours: allow what was flagged
+snare gate allow [dir [branch]|url]  you looked and it is yours: allow what was flagged,
+                                on disk or still incoming (a branch, a pull, a clone)
 snare gate allowed | forget     review or withdraw what you allowed</pre></div></div>
 
     <p class="note"><strong>A block is what snare suspects, not a verdict.</strong> It lists each

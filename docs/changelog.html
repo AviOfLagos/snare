@@ -38,7 +38,7 @@ try{var t=localStorage.getItem("snare-theme");if(t)document.documentElement.data
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
     <a class="brand" href="index.html"><span class="mark">sn</span>snare</a>
-    <a class="ver" href="changelog.html" title="What changed in v1.5.0">v1.5.0</a>
+    <a class="ver" href="changelog.html" title="What changed in v1.5.1">v1.5.1</a>
     <div class="nav-links" id="nav-links">
       <a href="index.html">The threat</a>
       <a href="check.html">Check</a>
@@ -105,12 +105,29 @@ snare update && snare selftest</pre></div></div>
     </div>
   </section>
 
+<section class="stack" id="v1-5-1">
+  <div class="rel">
+    <div class="rel-head">
+      <h2 class="rel-v">1.5.1</h2>
+      <span class="rel-date">2026-10-15</span>
+        <span class="tag now">Current</span>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — a block on incoming code could not be approved</h3>
+      <ul class="rel-list">
+        <li><code>snare gate allow</code> now also looks at the code a block stopped before it arrived: the branch a checkout would bring, the upstream a pull would merge, and anything the gate recorded for this repository. <code>snare gate allow &lt;dir&gt; &lt;ref&gt;</code> names a branch. <code>snare gate allow &lt;url&gt;</code> approves a blocked clone. Each finding says it is "not on disk yet". Approvals are still tied to the file's content, so if the file changes it is flagged again.</li>
+        <li>The block now prints the exact allow command for each thing it stopped, for example <code>snare gate allow /path/to/repo main</code>. Before, it printed <code>snare gate allow 'main in /path/to/repo'</code>, which is not a path.</li>
+        <li><code>snare respond</code> re-checks incoming blocks, shows each file and line, and offers <strong>allow</strong> or <strong>leave</strong>, with a pointer to <code>snare fix</code> if it really is infected at the source. It no longer prints the raw command.</li>
+        <li>Considered and rejected: exempting snare's own repository from branch and pull checks, the way its working copy is exempt. Those checks are where incoming code is examined, so the exemption would let a poisoned upstream of snare through unseen. Making it approvable fixes the dead end without that cost.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <section class="stack" id="v1-5-0">
   <div class="rel">
     <div class="rel-head">
       <h2 class="rel-v">1.5.0</h2>
       <span class="rel-date">2026-10-14</span>
-        <span class="tag now">Current</span>
     </div>
     <div class="rel-group">
       <h3>Added — the gate: scan before code comes in or runs</h3>
@@ -709,7 +726,7 @@ snare update && snare selftest</pre></div></div>
   </div>
   <div class="foot-bar">
     <span>Findings from a first-hand investigation, August 2026.</span>
-    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.5.0</a> · MIT</span>
+    <span><a href="https://github.com/nexlabz/snare">github.com/nexlabz/snare</a> · <a href="changelog.html">v1.5.1</a> · MIT</span>
   </div>
 </footer>
 </div>

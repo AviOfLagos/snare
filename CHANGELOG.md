@@ -7,6 +7,42 @@ because that is the failure that matters most in a scanner.
 `snare version` shows your version and commit. `snare update --check` compares
 commits, not just version numbers.
 
+## [1.5.1] — 2026-10-15
+
+### Fixed — a block on incoming code could not be approved
+
+Found while releasing 1.5.0. The gate stopped `git checkout main` and
+`git pull` on snare's own repository: the website's demo of the payload
+(`docs/assets/site.js:164`) carries a campaign marker as display text. That
+is a false alarm. The person was told to run `snare gate allow`, and it
+said "nothing to allow — clean". The gate kept blocking anyway. `snare
+respond` listed the block but only said "do not pull it until its owner
+cleans it", and the owner was the person reading it. The block had no way
+out.
+
+The cause: `allow` looked only at the files on disk. A checkout, a pull or
+a clone is blocked over code that has not arrived yet, so allow never saw
+it. Any user's false alarm on incoming code hit the same wall.
+
+- `snare gate allow` now also looks at the code a block stopped before it
+  arrived: the branch a checkout would bring, the upstream a pull would
+  merge, and anything the gate recorded for this repository.
+  `snare gate allow <dir> <ref>` names a branch. `snare gate allow <url>`
+  approves a blocked clone. Each finding says it is "not on disk yet".
+  Approvals are still tied to the file's content, so if the file changes it
+  is flagged again.
+- The block now prints the exact allow command for each thing it stopped,
+  for example `snare gate allow /path/to/repo main`. Before, it printed
+  `snare gate allow 'main in /path/to/repo'`, which is not a path.
+- `snare respond` re-checks incoming blocks, shows each file and line, and
+  offers **allow** or **leave**, with a pointer to `snare fix` if it really
+  is infected at the source. It no longer prints the raw command.
+- Considered and rejected: exempting snare's own repository from
+  branch and pull checks, the way its working copy is exempt. Those checks
+  are where incoming code is examined, so the exemption would let a
+  poisoned upstream of snare through unseen. Making it approvable fixes the
+  dead end without that cost.
+
 ## [1.5.0] — 2026-10-14
 
 ### Added — the gate: scan before code comes in or runs
