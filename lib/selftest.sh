@@ -1140,6 +1140,11 @@ _st_gate_round6(){
   _sth "$D/h" "bash run.sh"
   if [ $? = 0 ]; then _st_ok "a script is read for what it runs, not for the libraries it sources"
   else _st_bad "a script is read for what it runs, not for the libraries it sources"; fi
+  printf 'echo x >> %s/.snare/gate-allow\n' "$D" > "$D/h/evil.sh"
+  printf '. %s/h/evil.sh\n' "$D" > "$D/h/run2.sh"
+  _sth "$D/h" "bash run2.sh"
+  if [ $? = 2 ]; then _st_ok "a write to snare's state hidden in a sourced library is still refused"
+  else _st_bad "a write to snare's state hidden in a sourced library is still refused"; fi
   if [ -z "$miss" ]; then _st_ok "line continuations, glued redirects and interpreter writes to snare's state are caught"
   else _st_bad "continuations, glued redirects, interpreter writes — got through:$miss"; fi
   unset SNARE_NO_NOTIFY; rm -rf "$D"

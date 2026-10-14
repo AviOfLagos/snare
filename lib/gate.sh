@@ -431,7 +431,20 @@ def handle(argv, depth=0):
         # snare's own lib/ look like it was writing snare's state. And snare's
         # own install is never read as untrusted code.
         rp_ = os.path.realpath(path)
-        if IN_FILE[0] >= 1 or (SELFROOT and (rp_ == SELFROOT or rp_.startswith(SELFROOT + os.sep))):
+        if SELFROOT and (rp_ == SELFROOT or rp_.startswith(SELFROOT + os.sep)):
+            return
+        if IN_FILE[0] >= 1:
+            # A library a script sources is not "run", but it must not become a
+            # place to hide the one thing an agent may never do: approving a
+            # block or writing snare's state. Read it for refusals only.
+            try:
+                if os.path.isfile(path) and os.path.getsize(path) < 200000:
+                    keep = len(out); saved = cur; IN_FILE[0] += 1
+                    classify(open(path, errors="replace").read(), depth + 1)
+                    IN_FILE[0] -= 1; cur = saved
+                    out[keep:] = [o for o in out[keep:] if o.startswith("refuse\t")]
+            except Exception:
+                pass
             return
         if not os.path.exists(path):
             # Written by an earlier part of this same command — a download, a
