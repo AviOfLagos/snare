@@ -230,6 +230,7 @@ JSON
   _st_gate_round5
   _st_gate_round6
   _st_respond
+  _st_never_delete
   _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
@@ -1213,5 +1214,64 @@ _st_respond(){
 
   SNARE_HOME="$_h"; SNARE_LOGS="$_l"; GATE_LOG="$_g"; GATE_PENDING="$_p"; RESPOND_STATE="$_r"
   SNARE_BACKUPS="$_b"; GATE_ALLOW="$_a"; GATE_CACHE="$_c"
+  rm -rf "$D"
+}
+
+# snare never deletes a repository, an organization, or a remote branch —
+# enforced at the one place every gh/git call passes through, and checked so a
+# later change cannot route around it.
+_st_never_delete(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snarend.XXXXXX")" || return 0
+  # stand-ins for the real tools: if one is reached, it records that it ran
+  printf '#!/bin/sh\necho "RAN gh $*" >> "%s/ran"\n' "$D" > "$D/gh"
+  printf '#!/bin/sh\necho "RAN git $*" >> "%s/ran"\n' "$D" > "$D/git"
+  chmod +x "$D/gh" "$D/git"
+  local c bad="" ok=""
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    : > "$D/ran"
+    ( PATH="$D:$PATH"; eval "$c" ) >/dev/null 2>&1
+    [ -s "$D/ran" ] && bad="$bad | $c"
+  done <<'CMDS'
+gh repo delete nexlabz/snare --yes
+gh repo archive owner/repo --yes
+gh repo transfer owner/repo other
+gh api -X DELETE repos/owner/repo
+gh api --method DELETE orgs/nexlabz
+gh api --method=delete repos/owner/repo
+gh api -XDELETE repos/owner/repo/git/refs/heads/main
+gh api graphql -f query='mutation{deleteRepository(input:{repositoryId:"x"}){clientMutationId}}'
+gh release delete v1 --yes
+git push --delete origin main
+git push origin :main
+git push origin +:refs/heads/main
+git push --mirror origin
+git push --prune origin
+git -C . -c a=b push -d origin main
+CMDS
+  if [ -z "$bad" ]; then _st_ok "snare refuses every way of deleting a repo, an org or a remote branch"
+  else _st_bad "snare refuses every way of deleting a repo, an org or a remote branch —$bad"; fi
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    : > "$D/ran"
+    ( PATH="$D:$PATH"; eval "$c" ) >/dev/null 2>&1
+    [ -s "$D/ran" ] || ok="$ok | $c"
+  done <<'CMDS'
+gh api user --jq .login
+gh repo list nexlabz --limit 5
+gh issue create --repo o/r --title t --body b
+git push --force origin main:main
+git -C . status
+CMDS
+  if [ -z "$ok" ]; then _st_ok "reads, issues and ordinary pushes still go through the guard"
+  else _st_bad "reads, issues and ordinary pushes still go through the guard —$ok"; fi
+  # nothing in snare may call the real tools around the guard
+  local around
+  around="$(grep -rnE '(command|exec|xargs|env|nohup)[[:space:]]+(gh|git)([[:space:]]|$)|/usr/(local/)?bin/(gh|git)' \
+            "$SNARE_ROOT/bin" "$SNARE_ROOT/lib" 2>/dev/null \
+            | grep -v '/lib/selftest.sh:' | grep -v '/lib/common.sh:' \
+            | grep -v '/lib/shield.sh:' )"
+  if [ -z "$around" ]; then _st_ok "no code in snare calls gh or git around the guard"
+  else _st_bad "no code in snare calls gh or git around the guard: $around"; fi
   rm -rf "$D"
 }

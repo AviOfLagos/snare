@@ -217,7 +217,7 @@ _respond_clean_local(){
   # A fresh clone (what `snare fix` cleans) has a clean .git/config; this
   # checkout may not. Pin the settings that make git run a program — the same
   # set the gate uses — for every git call the cleaner makes.
-  ( cd "$dir" && git(){ command git "${GATE_GIT[@]:1}" "$@"; } && _fix_clean_tree local "$(ioc_pattern)" ) 2>&1 | sed 's/^/   /'
+  ( cd "$dir" && git(){ snare_safe_git "${GATE_GIT[@]:1}" "$@"; } && _fix_clean_tree local "$(ioc_pattern)" ) 2>&1 | sed 's/^/   /'
   if SNARE_GATE_TMP="${TMPDIR:-/tmp}" _gate_tree "$dir" fresh >/dev/null; then
     grn "     clean. Review with:  git -C '$dir' diff --cached"
     dim "     then commit it yourself. Committed files can be restored with git checkout."

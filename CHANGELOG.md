@@ -117,6 +117,17 @@ stops. This is built to stop a *misled* agent; a process that is already
 hostile and running its own code on the machine is beyond what any scanner
 can stop.
 
+### Added — snare never deletes a repository, an organization or a remote branch
+
+Before this, snare had no code that deletes, but nothing stopped a later
+change, a bug or crafted input from adding one. Now every `gh` and `git` call
+snare makes passes through one guard. It refuses `gh repo delete`, `archive`,
+`rename` and `transfer`, any `gh … delete`, any `gh api` DELETE request
+including GraphQL `deleteRepository`, and any `git push` that removes remote
+refs (`--delete`, `-d`, `--mirror`, `--prune`, `:branch`). The selftest tries
+fifteen of these, confirms reads, issues and ordinary pushes still work, and
+fails if any code calls `gh` or `git` around the guard.
+
 ### Fixed — `snare respond` replayed an old run and never said what it found
 
 The gate's banner says "let snare take charge: snare respond". respond then
