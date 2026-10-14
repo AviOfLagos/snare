@@ -746,9 +746,9 @@ _st_gate(){
 
   # ---- the classifier: quoted text is not a command
   local acts
-  acts="$(python3 -c "$(_gate_py)" "echo 'npm install' && git commit -m \"git pull\"" "$D" 2>/dev/null)"
-  if [ -z "$acts" ]; then _st_ok "a command only quoted inside echo or a commit message is not gated"
-  else _st_bad "a command only quoted inside echo or a commit message is not gated (got: $acts)"; fi
+  acts="$(python3 -c "$(_gate_py)" "echo 'npm install' && printf '%s' \"git pull && npm ci\" && git log -1 --grep='npm run dev'" "$D" 2>/dev/null)"
+  if [ -z "$acts" ]; then _st_ok "text that is only quoted — in echo, printf or a search pattern — is not gated"
+  else _st_bad "text that is only quoted — in echo, printf or a search pattern — is not gated (got: $acts)"; fi
   acts="$(python3 -c "$(_gate_py)" "cd app && npm --prefix web ci && git -C repo pull" "$D" 2>/dev/null)"
   if printf '%s' "$acts" | grep -q "tree	$D/app/web" && printf '%s' "$acts" | grep -q "pull	$D/app/repo"; then
     _st_ok "cd, --prefix and git -C are followed to the directory that actually runs"
@@ -873,15 +873,24 @@ _st_shield_fallback(){
 _st_gate_bypasses(){
   local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snaregb.XXXXXX")" || return 0
   D="$(cd "$D" && pwd)"
-  mkdir -p "$D/bad"
+  mkdir -p "$D/bad" "$D/ok"
   printf '{"name":"v","scripts":{"dev":"node api.js && next dev"}}\n' > "$D/bad/package.json"
   python3 -c "open('$D/bad/api.js','w').write('var _0xaf=[];'+'x'*29000)"
-  local c rc missed=""
+  printf 'npm install\n' > "$D/bad/setup.sh"; chmod +x "$D/bad/setup.sh"
+  printf '{"name":"ok","scripts":{"dev":"next dev"}}\n' > "$D/ok/package.json"
+  local r; for r in bad ok; do
+    ( cd "$D/$r" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm i ) >/dev/null 2>&1
+  done
+  local c rc missed="" n=0
   _stj(){ python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"; }
+  _sth(){ _stj "$1" "$2" | SNARE_NO_NOTIFY=1 SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; }
+  # Every one of these ran npm (or the repo's own code) in an infected
+  # repository and was ALLOWED by an earlier version of the gate. They are the
+  # shapes agents write, and the shapes an attacker would ask an agent to write.
   while IFS= read -r c; do
     [ -z "$c" ] && continue
-    c="$(printf '%b' "$c")"
-    _stj "$D/bad" "$c" | SNARE_NO_NOTIFY=1 SNARE_HOME="$D/.snare" "$SNARE_ROOT/bin/snare" gate --hook >/dev/null 2>&1; rc=$?
+    c="$(printf '%b' "$c")"; n=$((n + 1))
+    _sth "$D/bad" "$c"; rc=$?
     [ "$rc" = 2 ] || missed="$missed [$(printf '%s' "$c" | tr '\n\t' '  ')]"
   done <<'CMDS'
 echo hi\nnpm install
@@ -895,12 +904,51 @@ volta run npm install
 cross-env NODE_ENV=x npm run dev
 timeout 60 npm install
 bash <<'EOF'\nnpm install\nEOF
+if true; then npm install; fi
+for i in 1; do npm run dev; done
+{ npm install; }
+f(){ npm install; }; f
+echo $(npm install)
+echo `npm install`
+cat <<EOF | sh\nnpm install\nEOF
+bash setup.sh
+./setup.sh
+source setup.sh
+npm$IFS install
+{npm,install}
+eslint .
+postcss src/a.css
+vitest run
+jest
+nodemon server.js
+python3 build.py
+make
+code .
+git commit -m x
+find . -name x -exec npm install \;
+awk 'BEGIN{system("npm install")}'
+python3 -c "\nimport os\nos.system('npm install')\n"
+git \\\nclone https://github.com/a/b.git
 CMDS
   if [ -z "$missed" ]; then
-    _st_ok  "newlines, sh -c, eval, launchers and an in-command bypass are all gated"
+    _st_ok  "all $n known ways past the gate are blocked in an infected repository"
   else
-    _st_bad "newlines, sh -c, eval, launchers and an in-command bypass are all gated — missed:$missed"
+    _st_bad "known ways past the gate are blocked — missed:$missed"
   fi
+
+  # The other half: a clean repository is never blocked, whatever the shape.
+  missed=""
+  for c in "npm install" "eslint ." "make" "git commit -m x" "$(printf 'python3 -c "\nprint(1)\n"')"; do
+    _sth "$D/ok" "$c" || missed="$missed [$c]"
+  done
+  if [ -z "$missed" ]; then _st_ok "a clean repository is never blocked, whatever the command"
+  else _st_bad "a clean repository is never blocked — blocked:$missed"; fi
+
+  # Outside a repository there is nothing committed to protect. Scanning a
+  # bare /tmp recursively once took 8s and blamed unrelated subdirectories.
+  _sth "$D" "npm install"; rc=$?
+  if [ "$rc" = 0 ]; then _st_ok "a directory that is not a repository is not scanned recursively"
+  else _st_bad "a directory that is not a repository is not scanned recursively (rc=$rc)"; fi
 
   # A heredoc that only WRITES text is data. Blocking it stopped an agent
   # writing a README that says "npm install".

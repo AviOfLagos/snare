@@ -6,27 +6,22 @@ set -uo pipefail
 SNARE_VERSION="1.5.0"
 
 # Fast path for the agent hook. It runs before EVERY shell command an agent
-# issues, so it must cost nothing when the command cannot bring code in or run
-# it — `ls`, `cat`, `rg`. Loading snare and two Python passes cost ~370ms;
-# this pure-bash pre-filter answers most calls in ~15ms. It can only say "not
-# mine": anything that mentions a trigger word goes to the full classifier, so
-# it over-matches (a path containing "node" is checked) and never under-matches.
+# issues, so the commonest read-only ones must cost almost nothing. It may only
+# ever say "this is trivially safe": one simple command, first word on a short
+# read-only list, and not a single shell metacharacter — no pipe, no `;`, no
+# `$`, no backtick, no brace, not even an escaped newline. Anything else goes
+# to the full check. (The first version keyed on trigger words like "npm"
+# instead, and `eslint .` — which executes the repo's config — sailed past.)
 if [ "${1:-}" = gate ] && [ "${2#--hook}" != "${2:-}" ]; then
   SNARE_HOOK_INPUT="$(cat)"
-  # The command arrives JSON-encoded, so a newline is the two characters \n.
-  # "cd app\nnpm install" put the letter n directly before npm, the word
-  # boundary failed, and every multi-line command skipped the gate entirely.
-  # Match against a copy with the escapes turned back into spaces.
-  _probe="$SNARE_HOOK_INPUT"
-  _probe="${_probe//\\n/ }"; _probe="${_probe//\\t/ }"; _probe="${_probe//\\r/ }"
-  _probe="${_probe//\\\"/ }"
-  _trig='(^|[^A-Za-z0-9_.-])(npm|pnpm|yarn|bun|npx|bunx|pnpx|node|deno|next|vite|nuxt|tsx|ts-node|turbo|nx|astro|remix|electron|corepack|volta)([^A-Za-z0-9_-]|$)'
-  # git only matters when it brings commits in: `git status` and `git diff`
-  # are most of what an agent runs, and they should not pay for a scan.
-  _gtrig='(^|[^A-Za-z0-9_.-])git[^A-Za-z0-9_-].*(clone|pull|merge|rebase|checkout|switch|reset)'
-  # gh repo clone / gh pr checkout bring code in too.
-  _htrig='(^|[^A-Za-z0-9_.-])gh[^A-Za-z0-9_-].*(clone|checkout)'
-  [[ $_probe =~ $_trig ]] || [[ $_probe =~ $_gtrig ]] || [[ $_probe =~ $_htrig ]] || exit 0
+  _c=""
+  _re='"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  [[ $SNARE_HOOK_INPUT =~ $_re ]] && _c="${BASH_REMATCH[1]}"
+  _triv='^[[:space:]]*(ls|cat|head|tail|wc|pwd|echo|rg|grep|stat|file|which|type|tree|du|df|diff|sort|uniq|cut|jq|date|whoami|git[[:space:]]+(status|diff|log|show|branch|rev-parse|ls-files|remote|blame|grep|describe|tag|fetch|reflog|shortlog))([[:space:]]|$)'
+  _meta='[;&|<>()`$]|\\[ntr"]|[{}]'
+  if [ -n "$_c" ] && [[ $_c =~ $_triv ]] && ! [[ $_c =~ $_meta ]]; then
+    exit 0
+  fi
   export SNARE_HOOK_INPUT
 fi
 # Resolve through symlinks: install.sh links this into ~/.local/bin, so

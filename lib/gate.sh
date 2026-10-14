@@ -46,7 +46,7 @@ import os, re, shlex, sys
 cmd, cwd = sys.argv[1], sys.argv[2]
 ENV = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 WRAPPERS = {"sudo", "time", "env", "nohup", "exec", "command", "builtin",
-            "nice", "caffeinate", "stdbuf", "xargs"}
+            "nice", "caffeinate", "stdbuf", "timeout", "gtimeout", "doas"}
 PM = {"npm", "pnpm", "yarn", "bun"}
 RUNNERS = {"npx", "bunx", "pnpx", "node", "deno", "next", "vite", "nuxt",
            "tsx", "ts-node", "turbo", "nx", "astro", "remix", "electron"}
@@ -67,58 +67,181 @@ def resolve(d, base):
     d = os.path.expanduser(d)
     return os.path.normpath(d if os.path.isabs(d) else os.path.join(base, d))
 
-def segments(line):
-    lex = shlex.shlex(line, posix=True, punctuation_chars=";&|()")
-    lex.whitespace_split = True
-    seg = []
-    try:
-        for tok in lex:
-            if tok and set(tok) <= set(";&|()"):
-                if seg:
-                    yield seg
-                seg = []
-            else:
-                seg.append(tok)
-    except ValueError:
-        # Unbalanced quotes. Never fail open on a parse error: fall back to a
-        # crude split, which over-matches rather than under-matches.
-        for part in re.split(r"&&|\|\||[;|()]", line):
-            if part.split():
-                yield part.split()
-        return
-    if seg:
-        yield seg
-
-# A heredoc body is DATA unless it is fed to a shell. Reading it as commands
-# meant that writing a README with `cat <<EOF` that says "run npm install", or
-# a Python script that mentions `git clone`, was blocked as if it ran them.
-# Bodies fed to sh/bash/zsh/dash/ksh are shell, and are checked line by line.
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
-def shell_lines(text):
-    lines = text.splitlines() or [text]
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        yield line
-        i += 1
-        for m in HEREDOC.finditer(line):
-            word = m.group(2)
-            before = line[:m.start()].strip().split()
-            feeds_shell = bool(before) and os.path.basename(before[-1].lstrip("(")) in SHELLS \
-                or any(os.path.basename(w) in SHELLS for w in before[-3:])
-            body = []
-            while i < len(lines) and lines[i].strip() != word:
-                body.append(lines[i]); i += 1
-            i += 1   # the terminator
-            if feeds_shell:
-                for b in body:
-                    yield b
 
-# Variables the command itself assigns (S=/path; git clone "$S/x") are
-# tracked the way cd is, because shlex does not expand them and git would be
-# handed a literal "$S". The gate's own environment is the fallback.
-VARS = {}
+# ---------------------------------------------------------------------------
+# The rule that makes this fail closed. Two earlier versions tried to list the
+# commands that run code, and a review walked past both with commands nobody
+# had listed: `if …; then npm install; fi`, `./setup.sh`, `eslint .` (which
+# executes the repo's own config), `{npm,install}`, `npm$IFS install`. A shell
+# has no end of ways to run code. So the list is now the other way round: the
+# programs that provably do NOT run repository code. Inside a git repository,
+# anything else — however it is phrased — gets a scan of that repository
+# first. Scans are cached, so the cost is paid once per change upstream.
+# ---------------------------------------------------------------------------
+SAFE_PROGS = {
+    "ls", "cat", "head", "tail", "less", "more", "wc", "pwd", "echo", "printf",
+    "true", "false", "test", "[", "which", "type", "whoami", "id", "date",
+    "uname", "hostname", "printenv", "grep", "egrep", "fgrep", "rg", "ag",
+    "fd", "tree", "du", "df", "stat", "file", "diff", "cmp", "comm", "sort",
+    "uniq", "cut", "tr", "paste", "join", "column", "nl", "fold", "rev", "tee",
+    "basename", "dirname", "realpath", "readlink", "sed", "jq", "yq", "xxd",
+    "od", "hexdump", "strings", "sha256sum", "sha1sum", "shasum", "md5",
+    "md5sum", "base64", "mkdir", "touch", "cp", "mv", "rm", "rmdir", "ln",
+    "chmod", "sleep", "wait", "ps", "pgrep", "lsof", "kill", "pkill", "clear",
+    "history", "popd", "dirs", "export", "unset", "set", "shopt", "local",
+    "read", "exit", "return", "break", "continue", "trap", "umask", "ulimit",
+    "snare", "gh-switch", "unzip", "gzip", "gunzip", "curl",
+    "wget", "ssh-keygen", "openssl", "pbcopy", "pbpaste", "say",
+    "defaults", "plutil", "mdfind", "free", "top", "uptime", "nproc",
+    "seq", "yes", "expr", "bc",
+}
+# Deliberately NOT safe, though they look harmless: awk (system()), osascript
+# (do shell script), tar and zip (--to-command, --use-compress-program, -TT).
+GIT_SAFE = {"status", "diff", "log", "show", "branch", "remote", "fetch",
+            "rev-parse", "ls-files", "ls-tree", "ls-remote", "blame", "describe",
+            "shortlog", "grep", "reflog", "cat-file", "merge-base",
+            "for-each-ref", "config", "tag", "count-objects", "version", "help",
+            "init", "add", "rev-list", "name-rev", "check-ignore", "var",
+            "symbolic-ref", "show-ref", "whatchanged", "range-diff", "notes"}
+EDITORS = {"code", "code-insiders", "cursor", "windsurf", "zed", "subl",
+           "idea", "webstorm", "open", "xdg-open", "codium", "kiro", "trae"}
+RESERVED = {"if", "then", "else", "elif", "fi", "do", "done", "while",
+            "until", "{", "}", "!", "time", "function", "coproc", "esac",
+            "[[", "]]", "in"}
+SHELL_C = SHELLS
+LAUNCHERS = {"corepack", "volta", "nvm", "fnm", "mise", "rtx", "asdf", "proto",
+             "cross-env", "cross-env-shell", "dotenv", "dotenvx", "timeout",
+             "gtimeout", "watch", "entr", "op", "doppler", "infisical", "with-env"}
+
+def match_paren(text, i):
+    """Index of the ')' closing the '(' at text[i], quote-aware."""
+    depth, q, n = 0, None, len(text)
+    while i < n:
+        c = text[i]
+        if q:
+            if c == "\\" and q == '"':
+                i += 2; continue
+            if c == q:
+                q = None
+        elif c in "'\"":
+            q = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return n
+
+def split_commands(text):
+    """Split shell text into simple commands, the way the shell does.
+
+    One pass, tracking quotes. Separators — ; & | ( ) and newline — count only
+    OUTSIDE quotes. An earlier version split lines first and parsed quotes
+    second, so a quoted string spanning lines (python3 -c "…") was torn into
+    fragments that were read as commands of their own. Returns the commands,
+    plus the text of every $( ), backtick, <( ) and >( ) — all of which the
+    shell executes. Heredoc bodies are consumed here: kept only when a shell
+    on the same line reads them (`bash <<EOF`, `cat <<EOF | sh`), dropped as
+    data otherwise.
+    """
+    text = re.sub(r"\\\n[ \t]*", " ", text)          # line continuations
+    cmds, subs, buf, line_cmds, heredocs = [], [], [], [], []
+    i, n, q = 0, len(text), None
+
+    def flush():
+        c = "".join(buf).strip()
+        if c:
+            cmds.append(c); line_cmds.append(c)
+        buf.clear()
+
+    def read_sub(i, opener_len):
+        j = match_paren(text, i + opener_len - 1)
+        subs.append(text[i + opener_len:j])
+        return j + 1
+
+    while i < n:
+        c = text[i]
+        if q == "'":
+            buf.append(c); i += 1
+            if c == "'":
+                q = None
+            continue
+        if q == '"':
+            if c == "\\" and i + 1 < n:
+                buf.append(text[i:i + 2]); i += 2; continue
+            if c == '"':
+                q = None; buf.append(c); i += 1; continue
+            if text.startswith("$(", i) and not text.startswith("$((", i):
+                j = read_sub(i, 2); buf.append(text[i:j]); i = j; continue
+            if c == "`":
+                j = text.find("`", i + 1); j = n if j < 0 else j
+                subs.append(text[i + 1:j]); buf.append(text[i:j + 1]); i = j + 1; continue
+            buf.append(c); i += 1; continue
+        # ---- unquoted
+        if c == "\\" and i + 1 < n:
+            buf.append(text[i:i + 2]); i += 2; continue
+        if c in "'\"":
+            q = c; buf.append(c); i += 1; continue
+        if c == "#" and (not buf or buf[-1] in " \t"):
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if text.startswith("$((", i):
+            j = match_paren(text, i + 1); buf.append(text[i:j + 1]); i = j + 1; continue
+        if text.startswith("$(", i):
+            j = read_sub(i, 2); buf.append(text[i:j]); i = j; continue
+        if text.startswith("<(", i) or text.startswith(">(", i):
+            j = read_sub(i, 2); buf.append(" /dev/fd/0 "); i = j; continue
+        if c == "`":
+            j = text.find("`", i + 1); j = n if j < 0 else j
+            subs.append(text[i + 1:j]); buf.append(text[i:j + 1]); i = j + 1; continue
+        if text.startswith("<<", i) and not text.startswith("<<<", i):
+            m = HEREDOC.match(text, i)
+            if m:
+                heredocs.append(m.group(2)); buf.append(" "); i = m.end(); continue
+        # Redirections are not separators: 2>&1, >&2, &>file, <&3.
+        if c == "&" and ((buf and buf[-1] in "<>") or text.startswith("&>", i)):
+            buf.append(c); i += 1; continue
+        if c in ";&|()\n":
+            flush()
+            if c == "\n" and heredocs:
+                words = set()
+                for lc in line_cmds:
+                    words.update(os.path.basename(w) for w in re.split(r"\s+", lc) if w)
+                feeds = bool(words & SHELLS)
+                i += 1
+                for word in heredocs:
+                    start = i
+                    while i < n:
+                        e = text.find("\n", i); e = n if e < 0 else e
+                        if text[i:e].strip() == word:
+                            body = text[start:i]; i = e + 1; break
+                        i = e + 1
+                    else:
+                        body = text[start:]
+                    if feeds:
+                        bc, bs = split_commands(body)
+                        cmds.extend(bc); subs.extend(bs)
+                heredocs.clear(); line_cmds.clear()
+                continue
+            if c == "\n":
+                line_cmds.clear()
+            i += 1; continue
+        buf.append(c); i += 1
+    flush()
+    return cmds, subs
+
+def words(c):
+    try:
+        return shlex.split(c, posix=True)
+    except ValueError:
+        return c.split()       # unbalanced quotes: over-match, never under
+
+VARS, ALIASES = {}, {}
 VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 def expand(a):
     a = VAR.sub(lambda m: VARS.get(m.group(1) or m.group(2),
@@ -127,35 +250,80 @@ def expand(a):
 def unresolved(a):
     return "$(" in a or "`" in a or bool(VAR.search(a))
 
-# Programs that run another program: the gate looks through them to the
-# command they launch. Each was a measured bypass — `sh -c "npm install"`,
-# `corepack pnpm install`, `timeout 60 npm install` all ran unchecked.
-SHELL_C = {"sh", "bash", "zsh", "dash", "ksh"}
-LAUNCHERS = {"corepack", "volta", "nvm", "fnm", "mise", "rtx", "asdf", "proto",
-             "cross-env", "cross-env-shell", "dotenv", "dotenvx", "timeout",
-             "gtimeout", "watch", "entr", "op", "doppler", "infisical", "with-env"}
-
 out, cur = [], cwd
+IN_FILE = [0]      # >0 while reading a script file the command runs
 PRODUCED = set()   # directories an earlier clone in this command creates
 
-def handle(argv, depth=0):
-    """Classify one simple command. Recurses into sh -c / eval / launchers."""
+def classify(text, depth=0):
     global cur
-    if depth > 6 or not argv:
+    if depth > 8:
         return
-    # Leading VAR=value words and wrappers like sudo/env/nohup. The in-command
-    # SNARE_SKIP_GATE=1 is deliberately NOT a bypass: the agent writes the
-    # command, so honouring it let the agent — or a README that talked it into
-    # it — switch the gate off. A bypass has to come from the user.
-    while argv and (ENV.match(argv[0]) or os.path.basename(argv[0]) in WRAPPERS):
-        argv = argv[1:]
-        while argv and argv[0].startswith("-"):
+    cmds, subs = split_commands(text)
+    for sub in subs:
+        saved = cur
+        classify(sub, depth + 1)
+        cur = saved
+    for c in cmds:
+        argv = words(c)
+        if argv and all(ENV.match(t) for t in argv):
+            for t in argv:
+                k, v = t.split("=", 1)
+                VARS[k] = expand(v)
+            continue
+        handle([expand(t) for t in argv], depth)
+
+def unknown():
+    out.append("unknown\t%s" % cur)
+
+def cannot(what):
+    # At the top level, block: there is nothing to check. Inside a script file
+    # the gate reads on the side, "$VAR" everywhere is normal, so fall back to
+    # scanning the repository it runs in.
+    if IN_FILE[0]:
+        unknown()
+    else:
+        out.append("unresolved\t%s\t%s" % (cur, what))
+
+def handle(argv, depth=0):
+    global cur
+    if depth > 8 or not argv:
+        return
+    while argv:
+        a0 = argv[0]
+        if a0 in ("for", "select", "case"):
+            return                        # loop/case headers; bodies come next
+        if a0 in RESERVED or ENV.match(a0):
+            argv = argv[1:]; continue
+        b0 = os.path.basename(a0)
+        if b0 == "command" and len(argv) > 1 and argv[1] in ("-v", "-V"):
+            return                        # a lookup, not a run
+        if b0 in WRAPPERS:
             argv = argv[1:]
+            while argv and argv[0].startswith("-"):
+                argv = argv[1:]
+            if b0 == "timeout" and argv and re.match(r"^[0-9.]+[smhd]?$", argv[0]):
+                argv = argv[1:]
+            continue
+        break
     if not argv:
         return
-    prog = os.path.basename(argv[0])
+    raw = argv[0]
+    # A program name the gate cannot read for certain — a variable, a brace
+    # or glob expansion — could be anything.
+    # (Scanned, not blocked: "$EDITOR" or "$PYTHON" in a clean repository is
+    # fine. A clone URL or ref it cannot read IS blocked — see cannot().)
+    if unresolved(raw) or (re.search(r"[{}*?\[\]]", raw) and raw not in ("[", "[[")):
+        unknown(); return
+    prog = os.path.basename(raw)
     args = argv[1:]
 
+    if prog in ALIASES:
+        handle(shlex.split(ALIASES[prog]) + args, depth + 1); return
+    if prog == "alias":
+        for a in args:
+            if "=" in a:
+                k, v = a.split("=", 1); ALIASES[k] = v
+        return
     if prog in ("cd", "pushd"):
         if args and args[0] != "-":
             cur = resolve(args[0], cur)
@@ -163,36 +331,47 @@ def handle(argv, depth=0):
             cur = os.path.expanduser("~")
         return
 
-    # sh -c "<script>", bash -lc '<script>' — the script is shell, so check it.
+    # sh -c "<script>", bash -lc '<script>'
     if prog in SHELL_C:
         for k, a in enumerate(args):
             if a.startswith("-") and not a.startswith("--") and "c" in a[1:]:
                 if k + 1 < len(args):
-                    saved = cur
-                    for line in shell_lines(args[k + 1]):
-                        for seg in segments(line):
-                            handle([expand(t) for t in seg], depth + 1)
-                    cur = saved
+                    saved = cur; classify(args[k + 1], depth + 1); cur = saved
                 return
-        return
     if prog == "eval":
-        for line in shell_lines(" ".join(args)):
-            for seg in segments(line):
-                handle([expand(t) for t in seg], depth + 1)
+        saved = cur; classify(" ".join(args), depth + 1); cur = saved
         return
-    # Launchers: look past their own words to the first program we gate.
     if prog in LAUNCHERS:
         for k, a in enumerate(args):
             b = os.path.basename(a)
             if b in PM or b in RUNNERS or b in ("git", "gh") or b in SHELL_C:
-                handle(args[k:], depth + 1)
-                return
+                handle(args[k:], depth + 1); return
+        unknown(); return
+
+    # Running a script file: what it runs is what matters, so read it.
+    script = None
+    if prog in SHELL_C and args and not args[0].startswith("-"):
+        script = args[0]
+    elif prog in ("source", "."):
+        script = args[0] if args else None
+    elif raw.startswith(("./", "../", "/", "~")) or prog.endswith(".sh"):
+        script = raw
+    if script:
+        unknown()
+        path = resolve(script, cur)
+        try:
+            if os.path.isfile(path) and os.path.getsize(path) < 200000:
+                text = open(path, errors="replace").read()
+                first = text.split("\n", 1)[0]
+                if not first.startswith("#!") or any(s in first for s in SHELLS):
+                    saved = cur; IN_FILE[0] += 1
+                    classify(text, depth + 1)
+                    IN_FILE[0] -= 1; cur = saved
+        except Exception:
+            pass
         return
 
     if prog == "gh":
-        # gh repo clone owner/repo [dir]  ->  a clone of that repository.
-        # gh pr checkout <n>              ->  the PR's head, which may come
-        #                                     from anyone's fork, lands here.
         if args[:2] == ["repo", "clone"] and len(args) > 2:
             target = args[2]
             url = target if "://" in target or target.startswith("git@") \
@@ -204,7 +383,7 @@ def handle(argv, depth=0):
             if n.isdigit():
                 out.append("pull\t%s\torigin\tpull/%s/head" % (cur, n))
             else:
-                out.append("unresolved\t%s\tgh pr checkout %s" % (cur, n))
+                cannot("gh pr checkout %s" % n)
         return
 
     if prog == "git":
@@ -217,6 +396,9 @@ def handle(argv, depth=0):
             i += 1
         sub = args[i] if i < len(args) else ""
         rest = args[i + 1:]
+        if sub in GIT_SAFE or sub == "" or (sub == "stash" and rest[:1] in (["list"], ["show"])) \
+           or (sub == "worktree" and rest[:1] == ["list"]):
+            return
         if sub == "clone":
             pos, branch, j = [], "", 0
             while j < len(rest):
@@ -231,39 +413,52 @@ def handle(argv, depth=0):
                     pos.append(a)
                 j += 1
             if pos and unresolved(pos[0]):
-                out.append("unresolved\t%s\tgit clone %s" % (gdir, pos[0]))
+                cannot("git clone %s" % pos[0])
             elif pos:
                 src = pos[0]
                 local = "://" not in src and not re.match(r"^[^/]+@[^:]+:", src)
                 srcpath = resolve(src, gdir) if local else ""
-                # The gate checks the whole line before any of it runs, so in
-                # `git clone A x && git clone x y` the second source does not
-                # exist yet. Its content IS the first clone, already checked.
                 if not (local and any(srcpath == p or srcpath.startswith(p + os.sep)
                                       for p in PRODUCED)):
-                    out.append("clone\t%s\t%s\t%s" % (gdir, src, branch))
+                    rec = "1" if any(a in ("--recurse-submodules", "--recursive")
+                                     or a.startswith("--recurse-submodules=") for a in rest) else ""
+                    out.append("clone\t%s\t%s\t%s\t%s" % (gdir, src, branch, rec))
                 dest = pos[1] if len(pos) > 1 else \
                     os.path.basename(src.rstrip("/")).rsplit(".git", 1)[0]
                 PRODUCED.add(resolve(dest, gdir))
-        elif sub == "pull":
+            return
+        if sub == "pull":
             pos = [a for a in rest if not a.startswith("-")]
             if any(unresolved(a) for a in pos):
-                out.append("unresolved\t%s\tgit pull %s" % (gdir, " ".join(pos)))
+                cannot("git pull %s" % " ".join(pos))
             else:
                 out.append("pull\t%s\t%s" % (gdir, "\t".join(pos[:2])))
-        elif sub in ("merge", "rebase", "checkout", "switch", "reset", "cherry-pick"):
+            return
+        if sub in ("merge", "rebase", "checkout", "switch", "reset", "cherry-pick"):
             if "--" in rest:
                 rest = rest[:rest.index("--")]
-            if any(a in ("-b", "-B", "-c", "-C", "--orphan", "--abort",
-                         "--continue", "--skip", "--quit") for a in rest):
-                return
-            for a in rest:
-                if a.startswith("-"):
-                    continue
-                if unresolved(a):
-                    out.append("unresolved\t%s\tgit %s %s" % (gdir, sub, a))
-                else:
-                    out.append("ref\t%s\t%s" % (gdir, a))
+            if not any(a in ("-b", "-B", "-c", "-C", "--orphan", "--abort",
+                             "--continue", "--skip", "--quit") for a in rest):
+                for a in rest:
+                    if a.startswith("-"):
+                        continue
+                    if unresolved(a):
+                        cannot("git %s %s" % (sub, a))
+                    else:
+                        out.append("ref\t%s\t%s" % (gdir, a))
+        if sub == "submodule" and "update" in rest:
+            out.append("submodules\t%s" % gdir)
+            return
+        # commit, push, am, stash pop, and the rest: git hooks — husky's
+        # included, installed by the repo's own `prepare` script — run here.
+        cur_saved = cur; cur = gdir; unknown(); cur = cur_saved
+        return
+
+    if prog in EDITORS:
+        # Opening a folder in an editor is exactly what fires a folderOpen task.
+        targets = [a for a in args if not a.startswith("-")]
+        for t in targets or ["."]:
+            out.append("tree\t%s" % resolve(t, cur))
         return
 
     if prog in PM or prog in RUNNERS:
@@ -282,15 +477,23 @@ def handle(argv, depth=0):
         if prog in PM and sub in SAFE:
             return
         out.append("tree\t%s" % d)
+        return
 
-for line in shell_lines(cmd):
-    for argv in segments(line):
-        if argv and all(ENV.match(t) for t in argv):
-            for t in argv:
-                k, v = t.split("=", 1)
-                VARS[k] = expand(v)
-            continue
-        handle([expand(t) for t in argv])
+    if prog == "find" and any(a in ("-exec", "-execdir", "-ok", "-okdir") for a in args):
+        k = next(i for i, a in enumerate(args) if a in ("-exec", "-execdir", "-ok", "-okdir"))
+        handle([a for a in args[k + 1:] if a not in (";", "{}", "+", "\;")], depth + 1)
+        return
+    if prog == "xargs":
+        while args and args[0].startswith("-"):
+            args = args[1:]
+        handle(args, depth + 1); return
+    if prog in SAFE_PROGS:
+        return
+    # Everything else — eslint, jest, postcss, python, make, a function the
+    # command just defined — could run repository code. Check the repository.
+    unknown()
+
+classify(cmd)
 
 seen = set()
 for o in out:
@@ -311,7 +514,9 @@ _gate_key(){
     git rev-parse --git-dir >/dev/null 2>&1 || exit 0
     { pwd -P; echo "$SNARE_VERSION"
       git rev-parse HEAD '@{u}' 2>/dev/null
-      git status --porcelain 2>/dev/null
+      # Not `git status`: the agent's own edits to src/ would invalidate the
+      # cache after every keystroke. Payloads arrive through what changes
+      # HEAD or through the route files below, gitignored ones included.
       find . -maxdepth 4 -name node_modules -prune -o -name .git -prune -o \
         \( -name tasks.json -o -name 'settings*.json' -o -name package.json \
            -o -name '*.config.*' -o -name '*.woff*' -o -name '*.ttf' \
@@ -349,8 +554,11 @@ _gate_tree(){ # $1=dir  $2=nocache
   return 2
 }
 
-_gate_clone(){ # $1=cwd $2=url $3=branch
-  local url="$2" q rc
+_gate_clone(){ # $1=cwd $2=url $3=branch $4=1 when the clone recurses into submodules
+  local url="$2" q rc sub=()
+  # --recurse-submodules brings in code from other repositories too; the gate
+  # has to see what the real clone will.
+  [ -n "${4:-}" ] && sub=(--recurse-submodules --shallow-submodules)
   case "$url" in
     /*|*://*|*@*:*) ;;
     *) [ -e "$1/$url" ] && url="$1/$url" ;;
@@ -359,7 +567,7 @@ _gate_clone(){ # $1=cwd $2=url $3=branch
   # Cloning runs nothing: hooks are never cloned, and hooksPath is pointed at
   # nothing besides. Submodules are left alone — they are their own clone.
   if ! GIT_TERMINAL_PROMPT=0 git -c core.hooksPath=/dev/null clone -q --depth 1 \
-        --no-recurse-submodules ${3:+-b "$3"} -- "$url" "$q/repo" >"$q/err" 2>&1; then
+        ${sub[@]+"${sub[@]}"} ${3:+-b "$3"} -- "$url" "$q/repo" >"$q/err" 2>&1; then
     echo "could not fetch $2 to check it first:"; sed 's/^/    /' "$q/err" | tail -3
     rm -rf "$q"; return 2
   fi
@@ -410,6 +618,32 @@ _gate_ref(){ # $1=dir $2=ref — scan a commit's tree without touching the worki
   return "$rc"
 }
 
+_gate_submodules(){ # $1=dir — each submodule at the commit the repo pins
+  local dir="$1" path url sha q rc worst=0 res
+  [ -f "$dir/.gitmodules" ] || return 0
+  while IFS=' ' read -r key path; do
+    [ -z "$path" ] && continue
+    url="$(git -C "$dir" config -f .gitmodules --get "${key%.path}.url" 2>/dev/null)"
+    sha="$(git -C "$dir" ls-tree HEAD -- "$path" 2>/dev/null | awk '{print $3}')"
+    [ -n "$url" ] && [ -n "$sha" ] || continue
+    case "$url" in ./*|../*) url="$(git -C "$dir" remote get-url origin 2>/dev/null)/$url" ;; esac
+    q="$(mktemp -d "${SNARE_GATE_TMP:-${TMPDIR:-/tmp}}/snaregate.XXXXXX")" || return 2
+    if git init -q "$q/s" && GIT_TERMINAL_PROMPT=0 git -C "$q/s" -c core.hooksPath=/dev/null \
+         fetch -q --depth 1 -- "$url" "$sha" >/dev/null 2>&1 \
+       && git -C "$q/s" -c core.hooksPath=/dev/null checkout -q FETCH_HEAD >/dev/null 2>&1; then
+      res="$(_gate_tree "$q/s" nocache)"; rc=$?
+    else
+      res="could not fetch submodule $path ($url) at $sha"; rc=2
+    fi
+    rm -rf "$q"
+    if [ "$rc" != 0 ]; then
+      printf '%s\n' "submodule $path:" "$res"
+      if [ "$rc" = 1 ]; then worst=1; elif [ "$worst" = 0 ]; then worst=$rc; fi
+    fi
+  done < <(git -C "$dir" config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null)
+  return "$worst"
+}
+
 _gate_pull(){ # $1=dir  $2.. = remote [branch]
   local dir="$1" ref rc; shift
   git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
@@ -435,18 +669,35 @@ _gate_log(){ mkdir -p "$SNARE_LOGS" 2>/dev/null; echo "$(date '+%Y-%m-%dT%H:%M:%
 
 # $1 = command, $2 = cwd. Prints the verdict on stdout. 0 allow, 1 block.
 _gate_decide(){
-  local cmd="$1" cwd="$2" actions kind a b c rc what out=() blocked=0 cant=0
+  local cmd="$1" cwd="$2" actions kind a b c d rc what seen_top="" out=() blocked=0 cant=0
   actions="$(python3 -c "$(_gate_py)" "$cmd" "$cwd" 2>/dev/null)" || {
     out+=("could not parse the command, so it was not checked")
     cant=1; }
-  while IFS="$(printf '\t')" read -r kind a b c _; do
+  while IFS="$(printf '\t')" read -r kind a b c d; do
     [ -z "$kind" ] && continue
     local res=""
     case "$kind" in
-      tree)   res="$(_gate_tree "$a")"; rc=$? ; what="$a" ;;
-      clone)  res="$(_gate_clone "$a" "$b" "$c")"; rc=$? ; what="$b" ;;
+      tree)
+              # Outside a repository there is no committed payload to find,
+              # and a package manager reads only this directory's own
+              # package.json. Scanning a bare /tmp recursively took 8s and
+              # reported code in unrelated subdirectories as this command's.
+              if ! git -C "$a" rev-parse --git-dir >/dev/null 2>&1 && [ ! -f "$a/package.json" ]; then
+                continue
+              fi
+              res="$(_gate_tree "$a")"; rc=$? ; what="$a" ;;
+      clone)  res="$(_gate_clone "$a" "$b" "$c" "$d")"; rc=$? ; what="$b" ;;
       pull)   res="$(_gate_pull "$a" ${b:+"$b"} ${c:+"$c"})"; rc=$? ; what="incoming changes for $a" ;;
       ref)    res="$(_gate_ref "$a" "$b")"; rc=$? ; what="$b in $a" ;;
+      unknown)
+              # Something that may run repository code, by a route no list
+              # can name. Scan the repository it runs in — once per repo.
+              local top; top="$(git -C "$a" rev-parse --show-toplevel 2>/dev/null)"
+              [ -n "$top" ] || continue          # not a repository: no committed payload
+              case " $seen_top " in *" $top "*) continue ;; esac
+              seen_top="$seen_top $top"
+              res="$(_gate_tree "$top")"; rc=$?; what="$top" ;;
+      submodules) res="$(_gate_submodules "$a")"; rc=$?; what="submodules of $a" ;;
       unresolved) cant=1
               out+=("could not resolve a value in: $b"
                     "    (built at run time — \$(…), a backtick, or a variable set elsewhere)"

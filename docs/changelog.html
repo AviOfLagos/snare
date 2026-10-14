@@ -138,6 +138,16 @@ snare update && snare selftest</pre></div></div>
       </ul>
     </div>
     <div class="rel-group">
+      <h3>Changed — the gate decides what is safe, not what is dangerous</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
+      <h3>Fixed — upgrading did not install the gate</h3>
+      <ul class="rel-list">
+      </ul>
+    </div>
+    <div class="rel-group">
       <h3>Fixed — the gate's own bypasses, before it shipped</h3>
       <ul class="rel-list">
         <li><strong>A newline before the command.</strong> The hook receives the command JSON-encoded, so a newline is the two characters <code>\n</code>; <code>cd app\nnpm install</code> put the letter <code>n</code> directly before <code>npm</code>, the word boundary failed, and <strong>every multi-line agent command skipped the gate entirely</strong>. The same for a tab.</li>

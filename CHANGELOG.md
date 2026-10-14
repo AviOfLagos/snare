@@ -85,12 +85,58 @@ and hooks are kept, and running install twice changes nothing.
   history walk. `snare scan repo` itself is unchanged and remains the full
   check.
 
+### Changed — the gate decides what is safe, not what is dangerous
+
+Two versions of the gate tried to list the commands that run code — npm,
+node, next — and two review passes walked past both with commands nobody had
+listed. `if …; then npm install; fi`. `./setup.sh`. `eslint .`, which
+executes the repository's own config. `{npm,install}`. `npm$IFS install`. A
+multi-line `python3 -c "…os.system('npm install')…"`. A shell has no end of
+ways to run code, so a list of them is never finished.
+
+So the list now runs the other way. Inside a git repository, a command that
+is **not provably read-only** — `ls`, `cat`, `rg`, `git status`, `git diff`
+and a few dozen like them — gets a scan of that repository first, however it
+is phrased. That fails closed by construction: the cost of not recognising a
+command is a cached scan, not a payload running. Programs that look harmless
+but can run anything — `awk` (`system()`), `osascript`, `tar` and `zip`
+(`--to-command`, `-TT`) — are deliberately not on the safe list, and opening
+a folder in an editor (`code .`, `cursor .`, `open .`) counts, because that is
+what fires a `folderOpen` task. `git commit` and `git push` count too: husky
+installs the repository's own hooks.
+
+The command is now read by a tokenizer that walks it once, the way the shell
+does: separators only outside quotes, `$( )`, backticks and `<( )` checked as
+the commands they are, line continuations joined, comments dropped, `2>&1`
+not mistaken for a separator. The first version split lines before parsing
+quotes, so a quoted string spanning lines was torn into fragments that were
+read as commands. A script the command runs (`./setup.sh`, `bash x.sh`,
+`source x.sh`) is read too.
+
+Measured on a clean repository: the commonest read-only commands answer in
+6–10ms from a pure-bash path that accepts only a single command with no
+metacharacters at all; everything else costs ~290ms with the verdict cached.
+A directory that is not a repository and has no `package.json` is not
+scanned — there is nothing committed in it to find.
+
+### Fixed — upgrading did not install the gate
+
+Measured by simulating a 1.4.3 user running `snare update`: the update
+finished cleanly and the gate was not installed. The process running an
+update is still the **old** code, which has never heard of the gate, so the
+sync step inside the new `update` never runs on the upgrade that matters
+most. Every existing user would have upgraded and stayed unprotected, with no
+sign anything was missing. The first command the new version runs now
+installs it, once, says so in one line, and records that it has — and never
+after `snare agents uninstall`.
+
 ### Fixed — the gate's own bypasses, before it shipped
 
 A security review of the first version found it could be walked past, and
 every finding was reproduced before it was fixed: `npm install` ran in an
-infected repository and the gate allowed it. Twelve shapes, all now blocked
-and all in the selftest:
+infected repository and the gate allowed it. The specific fixes are below; the
+general one is the change above. **36 shapes in all**, every one of which got
+past an earlier version, are in the selftest and blocked:
 
 - **A newline before the command.** The hook receives the command
   JSON-encoded, so a newline is the two characters `\n`; `cd app\nnpm
