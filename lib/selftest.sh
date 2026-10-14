@@ -231,6 +231,7 @@ JSON
   _st_gate_round6
   _st_respond
   _st_never_delete
+  _st_agents_consent
   _st_shield_fallback
 
   if [ "$keep" = 1 ]; then dim "  kept: $T"; else rm -rf "$T"; fi
@@ -1273,5 +1274,33 @@ CMDS
             | grep -v '/lib/shield.sh:' )"
   if [ -z "$around" ]; then _st_ok "no code in snare calls gh or git around the guard"
   else _st_bad "no code in snare calls gh or git around the guard: $around"; fi
+  rm -rf "$D"
+}
+
+# The agent setup writes into the person's own CLAUDE.md and agent settings, so
+# it is never switched on without a yes: not by install, upgrade or update
+# when nobody is at a terminal, and not because an agent ran snare.
+_st_agents_consent(){
+  local D; D="$(mktemp -d "${TMPDIR:-/tmp}/snareac.XXXXXX")" || return 0
+  D="$(cd "$D" && pwd -P)"
+  local H="$D/home"; mkdir -p "$H/.claude"; printf '{}\n' > "$H/.claude/settings.json"
+  local S="$D/.snare"
+  hooked(){ grep -q 'gate --hook' "$H/.claude/settings.json" 2>/dev/null || [ -f "$H/.claude/CLAUDE.md" ]; }
+  # first run of a new version, no terminal: nothing installed, nothing recorded
+  HOME="$H" SNARE_HOME="$S" "$SNARE_ROOT/bin/snare" no-such-command </dev/null >/dev/null 2>&1
+  # update's sync with no prior yes
+  HOME="$H" SNARE_HOME="$S" "$SNARE_ROOT/bin/snare" agents sync </dev/null >/dev/null 2>&1
+  # the offer itself, when an agent (or CI) is the one running snare
+  HOME="$H" SNARE_HOME="$S" CI=1 "$SNARE_ROOT/bin/snare" agents offer </dev/null >/dev/null 2>&1
+  if ! hooked && [ ! -f "$S/agents-migrated" ] && [ ! -f "$S/agents-declined" ]; then
+    _st_ok "agent files are not touched without a yes (first run, update, CI)"
+  else _st_bad "agent files are not touched without a yes (first run, update, CI)"; fi
+  # typing `snare agents install` is the yes; sync then keeps it current
+  HOME="$H" SNARE_HOME="$S" "$SNARE_ROOT/bin/snare" agents install </dev/null >/dev/null 2>&1
+  local ok1=0; hooked && [ -f "$S/agents-migrated" ] && ok1=1
+  HOME="$H" SNARE_HOME="$S" "$SNARE_ROOT/bin/snare" agents uninstall </dev/null >/dev/null 2>&1
+  HOME="$H" SNARE_HOME="$S" "$SNARE_ROOT/bin/snare" agents sync </dev/null >/dev/null 2>&1
+  if [ "$ok1" = 1 ]; then _st_ok "'snare agents install' is the person's yes, and installs"
+  else _st_bad "'snare agents install' is the person's yes, and installs"; fi
   rm -rf "$D"
 }

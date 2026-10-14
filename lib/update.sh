@@ -431,6 +431,10 @@ cmd_update(){
     grep -q 'gate --hook' "$HOME/.claude/settings.json" 2>/dev/null \
       && dim "  agent gate refreshed — clones, pulls, installs and runs are scanned first"
   fi
+  # Not on yet and never answered: the person running the update is right
+  # here, so ask now rather than on some later command. (Asks only at a
+  # terminal; does nothing in CI or under an agent.)
+  [ -z "${SNARE_NO_AGENTS:-}" ] && "$SNARE_ROOT/bin/snare" agents offer || true
 
   # Updating the checkout does not update anything snare has installed
   # elsewhere. Those copies keep running old code, and in the shield's case an

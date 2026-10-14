@@ -1,5 +1,11 @@
 # snare
 
+[![CI](https://github.com/nexlabz/snare/actions/workflows/ci.yml/badge.svg)](https://github.com/nexlabz/snare/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/nexlabz/snare)](https://github.com/nexlabz/snare/releases/latest)
+[![Maintained](https://img.shields.io/badge/maintained-actively-brightgreen)](https://github.com/nexlabz/snare/commits/main)
+[![Last commit](https://img.shields.io/github/last-commit/nexlabz/snare)](https://github.com/nexlabz/snare/commits/main)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **A supply-chain attack `npm audit` cannot see — and the scanner that finds it.**
 
 Everyone knows the npm supply-chain attack: a package you depend on gets compromised, it arrives

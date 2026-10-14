@@ -94,9 +94,15 @@ esac
 # any clone, pull, install or run, and a short instruction block in the agent
 # files on this machine. SNARE_NO_AGENTS=1 skips it; `snare agents uninstall`
 # removes it and stops `snare update` from putting it back.
+# Asked, never assumed: it writes into the person's own agent files. Reads the
+# answer from /dev/tty, so `curl … | bash` can still ask; with no terminal it
+# installs nothing and says how to turn it on.
 if [ -z "${SNARE_NO_AGENTS:-}" ]; then
-  echo
-  "$SRC/bin/snare" agents install 2>/dev/null || echo "  (agent gate not installed — run: snare agents install)"
+  if ! "$SRC/bin/snare" agents offer; then
+    [ -f "${SNARE_HOME:-$HOME/.snare}/agents-migrated" ] || {
+      echo
+      echo "  To check code before your coding agents pull or run it:  snare agents install"; }
+  fi
 fi
 
 cat <<NEXT

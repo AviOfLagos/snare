@@ -117,6 +117,22 @@ stops. This is built to stop a *misled* agent; a process that is already
 hostile and running its own code on the machine is beyond what any scanner
 can stop.
 
+### Changed — the agent setup asks first
+
+It writes into the person's own `CLAUDE.md`, `AGENTS.md` and Claude Code
+settings, so it is never switched on without a yes. Earlier builds of 1.5.0
+switched it on with no question in three places: the installer, the first
+run after upgrading from 1.4.x, and `snare update`'s sync. Now:
+
+- The installer, the first run after upgrading and `snare update` each show
+  what would change and ask once (`[Y/n]`). They read the answer from the
+  terminal, so `curl … | bash` can still ask.
+- No terminal, CI, or a coding agent running snare: nothing is installed and
+  nothing is recorded, so a person is asked next time.
+- A "no" is remembered. `snare agents install` is the yes, typed by hand.
+- `snare agents sync` only refreshes a setup someone already agreed to; it
+  never installs one.
+
 ### Added — snare never deletes a repository, an organization or a remote branch
 
 Before this, snare had no code that deletes, but nothing stopped a later

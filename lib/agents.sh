@@ -21,6 +21,10 @@
 AG_BEGIN="<!-- >>> snare gate (managed by \`snare agents\`; edits inside are replaced) >>> -->"
 AG_END="<!-- <<< snare gate <<< -->"
 AG_DECLINED="$SNARE_HOME/agents-declined"
+# Written only when the person said yes — to the question, or by typing
+# `snare agents install` themselves. (The filename predates the consent rule;
+# kept so machines that already said yes are not asked again.)
+AG_CONSENT="$SNARE_HOME/agents-migrated"
 
 _agents_block(){
   cat <<EOF
@@ -207,7 +211,7 @@ _agents_install(){
     esac; shift
   done
   rm -f "$AG_DECLINED" 2>/dev/null
-  mkdir -p "$SNARE_HOME" 2>/dev/null; [ -f "$SNARE_HOME/agents-migrated" ] || date +%s > "$SNARE_HOME/agents-migrated"
+  mkdir -p "$SNARE_HOME" 2>/dev/null; [ -f "$AG_CONSENT" ] || date +%s > "$AG_CONSENT"
   [ "$quiet" = 1 ] || hdr "snare agents — gate every clone, pull, install and run"
 
   if [ -d "$HOME/.claude" ] || command -v claude >/dev/null 2>&1; then
@@ -292,10 +296,51 @@ _agents_status(){
 # Called by `snare update` and install.sh. Refreshes what is installed, so a
 # fix to the gate or its wording reaches everyone; installs it if it never
 # was; and respects an uninstall.
+# Refresh an agent setup the person already agreed to. Never a first install:
+# writing into someone's CLAUDE.md and agent settings is their call, so sync
+# (what `snare update` runs) only keeps an existing "yes" current.
 snare_agents_sync(){
   [ -n "${SNARE_NO_AGENTS:-}" ] && return 0
   [ -f "$AG_DECLINED" ] && return 0
+  [ -f "$AG_CONSENT" ] || return 0
   _agents_install --quiet
+}
+
+# Ask, once, whether to put the gate in front of this machine's coding agents.
+# Only a person at a terminal can answer: no terminal, CI, or a coding agent
+# running snare means nothing is installed and nothing is recorded, so the
+# question is asked the next time a person runs snare. Returns 0 if installed.
+snare_agents_offer(){
+  [ -n "${SNARE_NO_AGENTS:-}" ] && return 1
+  [ -f "$AG_CONSENT" ] || [ -f "$AG_DECLINED" ] && return 1
+  [ -n "${CI:-}" ] && return 1
+  _gate_under_agent && return 1
+  { : < /dev/tty; } 2>/dev/null || return 1
+  local ans tools=""
+  [ -d "$HOME/.claude" ] && tools="$tools Claude Code,"
+  [ -d "$HOME/.codex" ] && tools="$tools Codex,"
+  [ -d "$HOME/.gemini" ] && tools="$tools Gemini,"
+  {
+    echo
+    echo "  snare can check code before your coding agents pull it in or run it."
+    echo "  Before an agent clones, pulls, installs or runs anything, snare scans it;"
+    echo "  if it finds a payload, the command is stopped and you are shown where."
+    echo
+    echo "  This would change, on this machine:"
+    [ -d "$HOME/.claude" ] && echo "    ~/.claude/settings.json   add a check that runs before agent shell commands"
+    echo "    CLAUDE.md / AGENTS.md     add a short section telling agents to scan first"
+    tools="${tools%,}"; echo "                              (global files of${tools:- your agents})"
+    echo "  Undo any time, exactly:  snare agents uninstall"
+    echo
+    printf '  Turn it on? [Y/n] '
+  } > /dev/tty
+  IFS= read -r ans < /dev/tty || ans=n
+  case "$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')" in
+    ""|y|yes) _agents_install; return 0 ;;
+    *) mkdir -p "$SNARE_HOME" 2>/dev/null; date +%s > "$AG_DECLINED"
+       echo "  Left off. Turn it on later with:  snare agents install" > /dev/tty
+       return 1 ;;
+  esac
 }
 
 cmd_agents(){
@@ -305,6 +350,7 @@ cmd_agents(){
     uninstall) _agents_uninstall "$@" ;;
     status)    _agents_status ;;
     sync)      snare_agents_sync ;;
+    offer)     snare_agents_offer ;;
     print)     _agents_block ;;
     *) echo "usage: snare agents [install [--project [dir]] [--create]|uninstall [--project [dir]]|status|print]" ;;
   esac
