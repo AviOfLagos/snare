@@ -142,6 +142,10 @@ or doing anything. Reported from real use.
 - `snare respond` approves and cleans, so an agent is refused it, the same
   as `snare gate allow`. `snare respond --status` stays open.
 - The selftest no longer writes test entries into the real gate state.
+- **Gate:** a script that *sourced* a library had only refusals kept from
+  it. Sourcing runs every top-level line, so `bash run.sh` that sources a lib
+  which clones and installs another repository checked neither. Sourced and
+  nested scripts are now classified in full (found by automated review).
 
 ### Fixed — the gate could run the code it was checking
 

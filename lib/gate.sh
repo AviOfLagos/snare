@@ -428,24 +428,22 @@ def handle(argv, depth=0):
     if script:
         unknown()
         path = resolve(script, cur)
-        # Read the script the command runs — not the libraries THAT script
-        # sources. Sourcing a library defines functions; it does not run their
-        # bodies, and reading them as if it did made a harness that sources
-        # snare's own lib/ look like it was writing snare's state. And snare's
-        # own install is never read as untrusted code.
+        # snare's own install is never read as untrusted code: a harness that
+        # sources snare's lib/ is not writing snare's state.
         rp_ = os.path.realpath(path)
         if SELFROOT and (rp_ == SELFROOT or rp_.startswith(SELFROOT + os.sep)):
             return
         if IN_FILE[0] >= 1:
-            # A library a script sources is not "run", but it must not become a
-            # place to hide the one thing an agent may never do: approving a
-            # block or writing snare's state. Read it for refusals only.
+            # A script a script runs or sources is classified in full. Sourcing
+            # RUNS every top-level line of the library — an earlier version kept
+            # only refusals from it, so `bash run.sh` sourcing a lib that clones
+            # and installs another repository checked neither. Function bodies
+            # are read too; that over-reads, which costs a scan, not a miss.
             try:
                 if os.path.isfile(path) and os.path.getsize(path) < 200000:
-                    keep = len(out); saved = cur; IN_FILE[0] += 1
+                    saved = cur; IN_FILE[0] += 1
                     classify(open(path, errors="replace").read(), depth + 1)
                     IN_FILE[0] -= 1; cur = saved
-                    out[keep:] = [o for o in out[keep:] if o.startswith("refuse\t")]
             except Exception:
                 pass
             return
